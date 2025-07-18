@@ -96,7 +96,7 @@ async def login(login_data: LoginRequest):
             logger.warning(f"Login failed - invalid credentials | Email: {login_data.email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials"
+                detail="Invalid email or password. Please check your credentials and try again."
             )
         
         # Generate tokens
@@ -129,7 +129,7 @@ async def login(login_data: LoginRequest):
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
+            detail="Login failed due to a server error. Please try again later."
         )
 
 

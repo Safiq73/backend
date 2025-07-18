@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from app.core.config import settings
 from app.core.logging_config import setup_logging, get_logger
 from app.core.config_validator import validate_environment
@@ -7,6 +8,11 @@ from app.middleware.logging_middleware import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.development import DevelopmentMiddleware
+from app.middleware.error_handler import (
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler
+)
 from app.api.v1.api import api_router
 from app.db.database import startup_db, shutdown_db
 
@@ -87,6 +93,12 @@ def create_application() -> FastAPI:
     # Include API router
     app.include_router(api_router, prefix="/api/v1")
     logger.info("API routes registered")
+
+    # Register exception handlers
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, general_exception_handler)
+    logger.info("Exception handlers registered")
 
     # Global OPTIONS handler for CORS preflight requests
     @app.options("/{path:path}")

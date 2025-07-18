@@ -10,7 +10,6 @@ post_service = PostService()
 logger = get_logger('app.posts')
 
 
-@router.get("/", response_model=PaginatedResponse)
 @router.get("", response_model=PaginatedResponse)
 async def get_posts(
     page: int = Query(1, ge=1),
@@ -77,7 +76,7 @@ async def get_posts(
         )
 
 
-@router.post("/", response_model=APIResponse)
+@router.post("", response_model=APIResponse)
 async def create_post(
     post_data: PostCreate,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -97,7 +96,7 @@ async def create_post(
             'user_id': current_user['id']
         }
         
-        post = await post_service.create_post(post_dict)
+        post = await post_service.create_post(post_dict, current_user['id'])
         
         logger.info(f"Post created successfully | Post ID: {post['id']} | User: {current_user['id']}")
         
@@ -333,7 +332,7 @@ async def save_post(
             )
         
         # Toggle save status
-        result = await post_service.toggle_save_post(post_id, current_user['id'])
+        result = await post_service.save_post(post_id, current_user['id'])
         
         action = "saved" if result['is_saved'] else "unsaved"
         logger.info(f"Post {action} successfully | Post ID: {post_id}")

@@ -83,13 +83,13 @@ class DatabaseService:
         """Get user by ID"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT id, username, email, password_hash, display_name, bio, avatar_url,
+                SELECT id, username, email, password_hash, display_name, role, bio, avatar_url,
                        is_active, is_verified, created_at, updated_at
                 FROM users WHERE id = $1
             """
             row = await conn.fetchrow(query, user_id)
             return dict(row) if row else None
-    
+        
     async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Get user by email"""
         async with db_manager.get_connection() as conn:
