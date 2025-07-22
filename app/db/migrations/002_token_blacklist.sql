@@ -5,12 +5,12 @@ CREATE TABLE IF NOT EXISTS token_blacklist (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token_hash VARCHAR(64) UNIQUE NOT NULL, -- SHA-256 hash of the token
     expires_at INTEGER NOT NULL, -- Unix timestamp when the token expires
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Index for efficient lookups
-    INDEX idx_token_blacklist_hash (token_hash),
-    INDEX idx_token_blacklist_expires (expires_at)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create indexes for efficient lookups
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_hash ON token_blacklist (token_hash);
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires ON token_blacklist (expires_at);
 
 -- Clean up expired tokens automatically
 CREATE OR REPLACE FUNCTION cleanup_expired_tokens()

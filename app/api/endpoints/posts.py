@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, File, Uplo
 from typing import Optional, List, Dict, Any
 from app.schemas import PostCreate, PostUpdate, PostResponse, PaginatedResponse, APIResponse
 from app.services.post_service import PostService
+from app.services.mixed_content_service import mixed_content_service
 from app.services.auth_service import get_current_user
+from app.core.config import settings
 from app.core.logging_config import get_logger, log_error_with_context
 
 router = APIRouter()
@@ -22,43 +24,37 @@ async def get_posts(
     order: str = Query("desc"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
-    """Get posts with filters and pagination"""
+    """Get mixed content (posts + news) with filters and pagination"""
     try:
         # For now, if no user is authenticated, still return posts but without user-specific data
         user_id = current_user["id"] if current_user else None
         
         logger.info(
-            f"Fetching posts | Page: {page}, Size: {size} | "
+            f"Fetching mixed content | Page: {page}, Size: {size} | "
             f"Filters: type={post_type}, area={area}, status={post_status}, category={category} | "
             f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
         )
         
-        posts = await post_service.get_posts(
-            skip=(page - 1) * size,
-            limit=size,
-            post_type=post_type,
-            location=area,
-            current_user_id=user_id
-        )
-        
-        # Convert to paginated response format
-        from app.schemas import PaginatedResponse
-        paginated_posts = PaginatedResponse(
-            items=posts,
-            total=len(posts),  # For now, we'll use the current count
+        # Use mixed content service to get posts + news
+        paginated_result = await mixed_content_service.get_mixed_content(
             page=page,
             size=size,
-            has_more=len(posts) >= size  # Simple check for now
+            user_id=user_id,
+            post_type=post_type,
+            area=area,
+            category=category,
+            sort_by=sort_by,
+            order=order
         )
         
-        logger.info(f"Successfully fetched {len(posts)} posts for user {user_id or 'anonymous'}")
-        return paginated_posts
+        logger.info(f"Successfully fetched {len(paginated_result.items)} mixed items for user {user_id or 'anonymous'}")
+        return paginated_result
         
     except Exception as e:
         log_error_with_context(
             logger, e,
             {
-                'operation': 'get_posts',
+                'operation': 'get_mixed_content',
                 'user_id': user_id,
                 'page': page,
                 'size': size,
@@ -72,7 +68,152 @@ async def get_posts(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch posts"
+            detail="Failed to fetch mixed content"
+        )
+
+
+@router.get("/posts-only", response_model=PaginatedResponse)
+async def get_posts_only(
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    post_type: Optional[str] = Query(None),
+    area: Optional[str] = Query(None),
+    post_status: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    sort_by: str = Query("timestamp"),
+    order: str = Query("desc"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """Get only user-generated posts (no news) with filters and pagination"""
+    try:
+        # For now, if no user is authenticated, still return posts but without user-specific data
+        user_id = current_user["id"] if current_user else None
+        
+        logger.info(
+            f"Fetching posts only | Page: {page}, Size: {size} | "
+            f"Filters: type={post_type}, area={area}, status={post_status}, category={category} | "
+            f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
+        )
+        
+        posts = await post_service.get_posts(
+            skip=(page - 1) * size,
+            limit=size,
+            post_type=post_type,
+            location=area,
+            current_user_id=user_id
+        )
+        
+        # Add source field to posts
+        for post in posts:
+            post["source"] = "post"
+        
+        # Convert to paginated response format
+        paginated_posts = PaginatedResponse(
+            items=posts,
+            total=len(posts),  # For now, we'll use the current count
+            page=page,
+            size=size,
+            has_more=len(posts) >= size  # Simple check for now
+        )
+        
+        logger.info(f"Successfully fetched {len(posts)} posts only for user {user_id or 'anonymous'}")
+        return paginated_posts
+        
+    except Exception as e:
+        log_error_with_context(
+            logger, e,
+            {
+                'operation': 'get_posts_only',
+                'user_id': user_id,
+                'page': page,
+                'size': size,
+                'filters': {
+                    'post_type': post_type,
+                    'area': area,
+                    'status': post_status,
+                    'category': category
+                }
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch posts only"
+        )
+
+
+@router.get("/news-only", response_model=PaginatedResponse)
+async def get_news_only(
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    category: Optional[str] = Query(None),
+    country: str = Query(None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """Get only news articles (no user posts) with pagination"""
+    try:
+        user_id = current_user["id"] if current_user else None
+        
+        # Use settings default if no country specified
+        news_country = country or settings.newsapi_country
+        
+        logger.info(
+            f"Fetching news only | Page: {page}, Size: {size} | "
+            f"Category: {category}, Country: {news_country} | User: {user_id or 'anonymous'}"
+        )
+        
+        from app.services.news_service import news_service
+        
+        # Map category to news category if provided
+        news_category = None
+        if category:
+            category_mapping = {
+                "Technology": "technology",
+                "Healthcare": "health",
+                "Economy": "business",
+                "Sports": "sports",
+                "Entertainment": "entertainment",
+                "Education": "general",
+                "Infrastructure": "general",
+                "Environment": "science",
+                "Politics": "general",
+                "Safety": "general"
+            }
+            news_category = category_mapping.get(category, "general")
+        
+        news_articles = await news_service.fetch_news(
+            count=size,
+            country=news_country,
+            category=news_category,
+            page=page
+        )
+        
+        # Convert to paginated response format
+        paginated_news = PaginatedResponse(
+            items=news_articles,
+            total=len(news_articles),
+            page=page,
+            size=size,
+            has_more=len(news_articles) >= size
+        )
+        
+        logger.info(f"Successfully fetched {len(news_articles)} news articles for user {user_id or 'anonymous'}")
+        return paginated_news
+        
+    except Exception as e:
+        log_error_with_context(
+            logger, e,
+            {
+                'operation': 'get_news_only',
+                'user_id': user_id,
+                'page': page,
+                'size': size,
+                'category': category,
+                'country': news_country
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch news articles"
         )
 
 
@@ -93,6 +234,7 @@ async def create_post(
             'area': post_data.area,
             'category': post_data.category,
             'media_urls': post_data.media_urls or [],
+            'tags': post_data.tags or [],  # Add role tags
             'user_id': current_user['id']
         }
         

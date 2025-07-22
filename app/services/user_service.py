@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from app.services.db_service import DatabaseService
 from app.core.security import get_password_hash
+from app.models.pydantic_models import RoleResponse
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,48 @@ class UserService:
     
     def __init__(self):
         self.db_service = DatabaseService()
+    
+    def _format_user_with_role(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format user data to include role information"""
+        if not user_data:
+            return user_data
+        
+        # Extract role information if present
+        role_info = None
+        if user_data.get('role_id'):
+            role_info = {
+                'id': user_data.get('role_id'),
+                'role_name': user_data.get('role_name'),
+                'abbreviation': user_data.get('abbreviation'),
+                'h_order': user_data.get('h_order'),
+                'role_type': user_data.get('role_type'),
+                'description': user_data.get('role_description'),
+                'level': user_data.get('level'),
+                'is_elected': user_data.get('is_elected'),
+                'term_length': user_data.get('term_length'),
+                'status': user_data.get('role_status'),
+                'created_at': user_data.get('created_at'),
+                'updated_at': user_data.get('updated_at')
+            }
+        
+        # Create clean user data
+        clean_user_data = {
+            'id': user_data.get('id'),
+            'username': user_data.get('username'),
+            'email': user_data.get('email'),
+            'password_hash': user_data.get('password_hash'),
+            'display_name': user_data.get('display_name'),
+            'bio': user_data.get('bio'),
+            'avatar_url': user_data.get('avatar_url'),
+            'role': user_data.get('role'),
+            'is_active': user_data.get('is_active'),
+            'is_verified': user_data.get('is_verified'),
+            'created_at': user_data.get('created_at'),
+            'updated_at': user_data.get('updated_at'),
+            'role_info': role_info
+        }
+        
+        return clean_user_data
     
     async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new user"""
@@ -50,7 +93,7 @@ class UserService:
         """Get user by ID"""
         try:
             user = await self.db_service.get_user_by_id(user_id)
-            return user
+            return self._format_user_with_role(user) if user else None
             
         except Exception as e:
             logger.error(f"Error getting user by ID {user_id}: {e}")
@@ -60,7 +103,7 @@ class UserService:
         """Get user by email"""
         try:
             user = await self.db_service.get_user_by_email(email)
-            return user
+            return self._format_user_with_role(user) if user else None
             
         except Exception as e:
             logger.error(f"Error getting user by email {email}: {e}")
@@ -70,7 +113,7 @@ class UserService:
         """Get user by username"""
         try:
             user = await self.db_service.get_user_by_username(username)
-            return user
+            return self._format_user_with_role(user) if user else None
             
         except Exception as e:
             logger.error(f"Error getting user by username {username}: {e}")

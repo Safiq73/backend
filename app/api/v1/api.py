@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import auth, users, posts, comments, notifications, analytics
+from app.api.endpoints import auth, users, posts, comments, notifications, analytics, roles
 
 api_router = APIRouter()
 
@@ -10,3 +10,4 @@ api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
 api_router.include_router(comments.router, prefix="/comments", tags=["comments"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(roles.router, prefix="/roles", tags=["roles"])

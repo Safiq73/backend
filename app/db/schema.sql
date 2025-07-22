@@ -7,11 +7,26 @@ CREATE EXTENSION IF NOT EXISTS postgis_topology;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create ENUM types for better data integrity
-CREATE TYPE user_role AS ENUM ('citizen', 'representative', 'admin', 'moderator');
 CREATE TYPE post_type AS ENUM ('issue', 'announcement', 'news', 'accomplishment', 'discussion');
 CREATE TYPE post_status AS ENUM ('open', 'in_progress', 'resolved', 'closed');
 CREATE TYPE notification_type AS ENUM ('issue_update', 'comment', 'vote', 'assignment', 'resolution', 'mention', 'follow');
 CREATE TYPE vote_type AS ENUM ('upvote', 'downvote');
+
+-- Role table for user roles
+CREATE TABLE role (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_name VARCHAR(100) NOT NULL UNIQUE,
+    abbreviation VARCHAR(20) UNIQUE,
+    h_order INTEGER,
+    role_type VARCHAR(50),
+    description TEXT,
+    level VARCHAR(50),
+    is_elected BOOLEAN DEFAULT FALSE,
+    term_length INTEGER,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Users table - aligned with implementation
 CREATE TABLE users (
@@ -22,7 +37,7 @@ CREATE TABLE users (
     display_name VARCHAR(100),
     bio TEXT,
     avatar_url TEXT,
-    role user_role NOT NULL DEFAULT 'citizen',
+    role UUID REFERENCES role(id) DEFAULT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -51,7 +66,6 @@ CREATE TABLE posts (
     category VARCHAR(100), -- Category for filtering
     location VARCHAR(255), -- Location description
     tags TEXT[], -- Array of tags
-    images TEXT[], -- Array of image URLs (for compatibility with current implementation)
     media_urls TEXT[], -- Array of media URLs (standardized name)
     -- Vote counts (updated via triggers)
     upvotes INTEGER DEFAULT 0,

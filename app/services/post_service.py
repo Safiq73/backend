@@ -53,7 +53,7 @@ class PostService:
                 user_id=author_id,
                 location=location
             )
-            
+
             # Convert to response format
             responses = []
             for post in posts:
@@ -64,6 +64,7 @@ class PostService:
             return responses
             
         except Exception as e:
+            
             logger.error(f"Error retrieving posts: {e}")
             raise HTTPException(status_code=500, detail="Failed to retrieve posts")
     
@@ -257,7 +258,7 @@ class PostService:
                 "title": post['title'],
                 "content": post['content'],
                 "post_type": post['post_type'],
-                "images": post.get('images', []),
+                "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
                 "location": post.get('location'),
                 "tags": post.get('tags', []),
                 "author": post['author'],
@@ -272,5 +273,6 @@ class PostService:
             }
             
         except Exception as e:
+            import pdb; pdb.set_trace()
             logger.error(f"Error formatting post response for post {post.get('id', 'unknown')}: {e}")
             raise

@@ -9,12 +9,39 @@ from uuid import UUID
 from enum import Enum
 import re
 
-# Enums that match database schema
-class UserRole(str, Enum):
-    CITIZEN = "citizen"
-    REPRESENTATIVE = "representative"
-    ADMIN = "admin"
-    MODERATOR = "moderator"
+# Role models - now using foreign key relationship
+class RoleBase(BaseModel):
+    role_name: str = Field(..., min_length=1, max_length=100)
+    abbreviation: Optional[str] = Field(None, max_length=20)
+    h_order: Optional[int] = None
+    role_type: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = None
+    level: Optional[str] = Field(None, max_length=50)
+    is_elected: bool = False
+    term_length: Optional[int] = None
+    status: str = Field(default="active", max_length=20)
+
+class RoleCreate(RoleBase):
+    pass
+
+class RoleUpdate(BaseModel):
+    role_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    abbreviation: Optional[str] = Field(None, max_length=20)
+    h_order: Optional[int] = None
+    role_type: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = None
+    level: Optional[str] = Field(None, max_length=50)
+    is_elected: Optional[bool] = None
+    term_length: Optional[int] = None
+    status: Optional[str] = Field(None, max_length=20)
+
+class RoleResponse(RoleBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class PostType(str, Enum):
     ISSUE = "issue"
@@ -54,7 +81,7 @@ class UserBase(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
     bio: Optional[str] = Field(None, max_length=500)
     avatar_url: Optional[str] = Field(None, max_length=500)
-    role: UserRole = UserRole.CITIZEN
+    role: Optional[UUID] = None  # Foreign key to role table
 
     @validator('username')
     def validate_username(cls, v):
@@ -103,6 +130,7 @@ class UserResponse(UserBase):
     is_verified: bool = False
     created_at: datetime
     updated_at: datetime
+    role_info: Optional[RoleResponse] = None  # Populated role information
 
     class Config:
         from_attributes = True
@@ -113,6 +141,7 @@ class AuthorInfo(BaseModel):
     username: str
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    role_info: Optional[RoleResponse] = None  # Populated role information
 
 # Post models - aligned with corrected schema
 class PostBase(BaseModel):
@@ -288,8 +317,8 @@ class PostFilter(BaseModel):
     search_query: Optional[str] = None
 
 class PostSort(BaseModel):
-    sort_by: str = Field(default="created_at", regex="^(created_at|updated_at|upvotes|comment_count|priority_score)$")
-    order: str = Field(default="desc", regex="^(asc|desc)$")
+    sort_by: str = Field(default="created_at", pattern="^(created_at|updated_at|upvotes|comment_count|priority_score)$")
+    order: str = Field(default="desc", pattern="^(asc|desc)$")
 
 # Enable forward references
 CommentResponse.model_rebuild()

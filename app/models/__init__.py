@@ -4,46 +4,50 @@ Using Pydantic models for our raw SQL implementation
 """
 
 from .pydantic_models import (
-    # User models
-    User, UserCreate, UserUpdate, UserRole,
+    # Role models
+    RoleBase, RoleCreate, RoleUpdate, RoleResponse,
     
-    # Issue models  
-    Issue, IssueCreate, IssueUpdate, IssueStatus, IssueType,
+    # User models
+    UserBase, UserCreate, UserUpdate, UserResponse, AuthorInfo,
+    
+    # Post models  
+    PostBase, PostCreate, PostUpdate, PostResponse, PostType, PostStatus,
     
     # Comment models
-    Comment, CommentCreate, CommentUpdate,
+    CommentBase, CommentCreate, CommentUpdate, CommentResponse,
     
     # Vote models
-    Vote, VoteCreate, VoteType,
-    
-    # Representative models
-    Representative,
+    VoteCreate, VoteResponse, VoteType,
     
     # Notification models
-    Notification, NotificationType,
-    
-    # Analytics models
-    DailyAnalytics,
+    NotificationResponse, NotificationType,
     
     # Response models
-    IssueListResponse, CommentListResponse,
-    
-    # Spatial models
-    LocationPoint, SpatialQuery,
+    PostListResponse, CommentListResponse, PaginatedResponse,
     
     # Auth models
-    Token, TokenData
+    Token, TokenData, LoginRequest,
+    
+    # API models
+    APIResponse,
+    
+    # Filter/Sort models
+    PostFilter, PostSort,
+    
+    # Stats models
+    UserStats, PostStats
 )
 
 __all__ = [
-    "User", "UserCreate", "UserUpdate", "UserRole",
-    "Issue", "IssueCreate", "IssueUpdate", "IssueStatus", "IssueType", 
-    "Comment", "CommentCreate", "CommentUpdate",
-    "Vote", "VoteCreate", "VoteType",
-    "Representative",
-    "Notification", "NotificationType", 
-    "DailyAnalytics",
-    "IssueListResponse", "CommentListResponse",
-    "LocationPoint", "SpatialQuery",
-    "Token", "TokenData"
+    "RoleBase", "RoleCreate", "RoleUpdate", "RoleResponse",
+    "UserBase", "UserCreate", "UserUpdate", "UserResponse", "AuthorInfo",
+    "PostBase", "PostCreate", "PostUpdate", "PostResponse", "PostType", "PostStatus",
+    "CommentBase", "CommentCreate", "CommentUpdate", "CommentResponse",
+    "VoteCreate", "VoteResponse", "VoteType",
+    "NotificationResponse", "NotificationType", 
+    "PostListResponse", "CommentListResponse", "PaginatedResponse",
+    "Token", "TokenData", "LoginRequest",
+    "APIResponse",
+    "PostFilter", "PostSort",
+    "UserStats", "PostStats"
 ]

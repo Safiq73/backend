@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.schemas import UserCreate, UserResponse, Token, LoginRequest, APIResponse
+from app.models.pydantic_models import UserCreate, UserResponse, Token, LoginRequest, APIResponse
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 from app.core.security import get_password_hash
@@ -36,7 +36,8 @@ async def register(user_data: UserCreate):
             'password': user_data.password,
             'display_name': user_data.display_name,
             'bio': user_data.bio,
-            'avatar_url': user_data.avatar_url
+            'avatar_url': user_data.avatar_url,
+            'role': user_data.role  # Include role UUID
         }
         
         # Create new user

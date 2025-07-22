@@ -74,6 +74,15 @@ class Settings(BaseSettings):
     default_search_radius_meters: int = 1000  # 1km default radius for location searches
     max_search_radius_meters: int = 50000     # 50km max radius
     
+    # News API Configuration
+    newsapi_key: Optional[str] = None
+    newsapi_country: str = "in"  # Default country for news
+    
+    # Mixed Content Configuration
+    posts_ratio: float = 0.4  # 40% posts, 60% news by default
+    min_posts_per_page: int = 0  # Minimum posts per page
+    max_posts_per_page: int = 20  # Maximum posts per page
+    
     # Rate limiting - Disabled for local development
     rate_limit_per_minute: int = 0  # 0 = disabled
     rate_limit_per_hour: int = 0    # 0 = disabled

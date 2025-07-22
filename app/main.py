@@ -95,10 +95,10 @@ def create_application() -> FastAPI:
     logger.info("API routes registered")
 
     # Register exception handlers
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(Exception, general_exception_handler)
-    logger.info("Exception handlers registered")
+    # app.add_exception_handler(HTTPException, http_exception_handler)
+    # app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    # app.add_exception_handler(Exception, general_exception_handler)
+    # logger.info("Exception handlers registered")
 
     # Global OPTIONS handler for CORS preflight requests
     @app.options("/{path:path}")
