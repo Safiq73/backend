@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+import logging
 from app.core.config import settings
 from app.core.logging_config import setup_logging, get_logger
 from app.core.config_validator import validate_environment
@@ -17,16 +18,30 @@ from app.api.v1.api import api_router
 from app.db.database import startup_db, shutdown_db
 
 # Validate configuration on startup
-validate_environment()
+try:
+    validate_environment()
+    print("✅ Configuration validation completed successfully")
+except Exception as e:
+    print(f"❌ Configuration validation failed: {e}")
+    if not getattr(settings, 'debug', True):
+        raise
+    print("⚠️  Continuing in debug mode with configuration warnings...")
 
 # Setup logging with enhanced verbosity for development
-setup_logging(
-    log_level=settings.log_level,
-    log_file=settings.log_file,
-    enable_console=getattr(settings, 'enable_console_logging', True)
-)
-
-logger = get_logger('app.main')
+try:
+    setup_logging(
+        log_level=settings.log_level,
+        log_file=settings.log_file,
+        enable_console=getattr(settings, 'enable_console_logging', True)
+    )
+    logger = get_logger('app.main')
+    logger.info("Logging configuration completed successfully")
+except Exception as e:
+    print(f"❌ Logging setup failed: {e}")
+    # Fallback to basic logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger('app.main')
+    logger.warning("Using fallback logging configuration")
 
 
 def create_application() -> FastAPI:
@@ -95,10 +110,15 @@ def create_application() -> FastAPI:
     logger.info("API routes registered")
 
     # Register exception handlers
-    # app.add_exception_handler(HTTPException, http_exception_handler)
-    # app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    # app.add_exception_handler(Exception, general_exception_handler)
-    # logger.info("Exception handlers registered")
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, general_exception_handler)
+    logger.info("Exception handlers registered")
+
+    # Register startup and shutdown events
+    app.add_event_handler("startup", startup_db)
+    app.add_event_handler("shutdown", shutdown_db)
+    logger.info("Database lifecycle events registered")
 
     # Global OPTIONS handler for CORS preflight requests
     @app.options("/{path:path}")
@@ -114,30 +134,8 @@ def create_application() -> FastAPI:
             "version": settings.version
         }
 
-    # Application lifecycle events
-    @app.on_event("startup")
-    async def startup_event():
-        logger.info("Application startup initiated")
-        await startup_db()
-        logger.info("Application startup completed")
-
-    @app.on_event("shutdown") 
-    async def shutdown_event():
-        logger.info("Application shutdown initiated")
-        await shutdown_db()
-        logger.info("Application shutdown completed")
-
     logger.info("FastAPI application created successfully")
     return app
 
 
 app = create_application()
-
-# Database startup and shutdown handlers
-@app.on_event("startup")
-async def startup_event():
-    await startup_db()
-
-@app.on_event("shutdown") 
-async def shutdown_event():
-    await shutdown_db()
