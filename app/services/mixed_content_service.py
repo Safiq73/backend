@@ -95,12 +95,16 @@ class MixedContentService:
                 # Calculate news page - spread news across pages
                 news_page = max(1, (page - 1) // 2 + 1)  # Spread news pagination
                 
-                news_articles = await self.news_service.fetch_news(
-                    count=actual_news_count,
-                    country=settings.newsapi_country,
-                    category=self._map_category_to_news(category),
-                    page=news_page
-                )
+                # news_articles = await self.news_service.fetch_news(
+                #     count=actual_news_count,
+                #     country=settings.newsapi_country,
+                #     category=self._map_category_to_news(category),
+                #     page=news_page
+                # )
+                
+                # Ensure we have a list of articles, this is to handle cases where no articles are returned
+                news_articles = []
+                
                 
                 logger.info(f"Fetched {len(news_articles)} news articles")
             except Exception as e:

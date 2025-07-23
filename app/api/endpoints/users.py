@@ -53,12 +53,16 @@ async def get_current_user_posts(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid user ID")
         
+        # Ensure user_id is a UUID object
+        if isinstance(user_id, str):
+            user_id = UUID(user_id)
+        
         # Get posts by the current user
         posts = await post_service.get_posts(
             skip=(page - 1) * size,
             limit=size,
-            author_id=UUID(user_id),
-            current_user_id=UUID(user_id)
+            author_id=user_id,
+            current_user_id=user_id
         )        
 
         return APIResponse(
