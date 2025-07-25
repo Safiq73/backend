@@ -89,7 +89,7 @@ class DatabaseService:
                        r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM users u
-                LEFT JOIN role r ON u.role = r.id
+                LEFT JOIN roles r ON u.role = r.id
                 WHERE u.id = $1
             """
             row = await conn.fetchrow(query, user_id)
@@ -104,7 +104,7 @@ class DatabaseService:
                        r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM users u
-                LEFT JOIN role r ON u.role = r.id
+                LEFT JOIN roles r ON u.role = r.id
                 WHERE u.email = $1
             """
             row = await conn.fetchrow(query, email)
@@ -119,7 +119,7 @@ class DatabaseService:
                        r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM users u
-                LEFT JOIN role r ON u.role = r.id
+                LEFT JOIN roles r ON u.role = r.id
                 WHERE u.username = $1
             """
             row = await conn.fetchrow(query, username)
@@ -169,7 +169,7 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             role_id = uuid4()
             query = """
-                INSERT INTO role (id, role_name, abbreviation, h_order, role_type, description, 
+                INSERT INTO roles (id, role_name, abbreviation, h_order, role_type, description, 
                                 level, is_elected, term_length, status)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING id, role_name, abbreviation, h_order, role_type, description, 
@@ -196,7 +196,7 @@ class DatabaseService:
             query = """
                 SELECT id, role_name, abbreviation, h_order, role_type, description, 
                        level, is_elected, term_length, status, created_at, updated_at
-                FROM role WHERE id = $1
+                FROM roles WHERE id = $1
             """
             row = await conn.fetchrow(query, role_id)
             return dict(row) if row else None
@@ -207,7 +207,7 @@ class DatabaseService:
             query = """
                 SELECT id, role_name, abbreviation, h_order, role_type, description, 
                        level, is_elected, term_length, status, created_at, updated_at
-                FROM role WHERE status = 'active' ORDER BY h_order ASC, role_name ASC
+                FROM roles WHERE status = 'active' ORDER BY h_order ASC, role_name ASC
             """
             rows = await conn.fetch(query)
             return [dict(row) for row in rows]
@@ -233,7 +233,7 @@ class DatabaseService:
             values.append(role_id)
             
             query = f"""
-                UPDATE role 
+                UPDATE roles 
                 SET {', '.join(set_clauses)}
                 WHERE id = ${param_num}
                 RETURNING id, role_name, abbreviation, h_order, role_type, description, 
@@ -246,7 +246,7 @@ class DatabaseService:
     async def delete_role(self, role_id: UUID) -> bool:
         """Delete role by ID"""
         async with db_manager.get_connection() as conn:
-            query = "DELETE FROM role WHERE id = $1"
+            query = "DELETE FROM roles WHERE id = $1"
             result = await conn.execute(query, role_id)
             return result == "DELETE 1"
     
@@ -287,7 +287,7 @@ class DatabaseService:
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN role r ON u.role = r.id
+                LEFT JOIN roles r ON u.role = r.id
                 WHERE p.id = $1
             """
             row = await conn.fetchrow(query, post_id)
@@ -336,7 +336,7 @@ class DatabaseService:
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN role r ON u.role = r.id
+                LEFT JOIN roles r ON u.role = r.id
             """
             
             conditions = []
@@ -611,7 +611,7 @@ class DatabaseService:
                        (COALESCE(vote_count, 0) + COALESCE(comment_count, 0)) as engagement_score
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN role r ON u.role = r.id
+                LEFT JOIN roles r ON u.role = r.id
                 LEFT JOIN (
                     SELECT post_id, COUNT(*) as vote_count
                     FROM votes 

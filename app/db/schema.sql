@@ -12,8 +12,8 @@ CREATE TYPE post_status AS ENUM ('open', 'in_progress', 'resolved', 'closed');
 CREATE TYPE notification_type AS ENUM ('issue_update', 'comment', 'vote', 'assignment', 'resolution', 'mention', 'follow');
 CREATE TYPE vote_type AS ENUM ('upvote', 'downvote');
 
--- Role table for user roles
-CREATE TABLE role (
+-- Roles table for user roles
+CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     role_name VARCHAR(100) NOT NULL UNIQUE,
     abbreviation VARCHAR(20) UNIQUE,
@@ -37,7 +37,7 @@ CREATE TABLE users (
     display_name VARCHAR(100),
     bio TEXT,
     avatar_url TEXT,
-    role UUID REFERENCES role(id) DEFAULT NULL,
+    role UUID REFERENCES roles(id) DEFAULT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
