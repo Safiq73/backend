@@ -5,7 +5,7 @@ Using Pydantic models for our raw SQL implementation
 
 from .pydantic_models import (
     # Role models
-    RoleBase, RoleCreate, RoleUpdate, RoleResponse,
+    TitleBase, TitleCreate, TitleUpdate, TitleResponse,
     
     # User models
     UserBase, UserCreate, UserUpdate, UserResponse, AuthorInfo,
@@ -39,7 +39,7 @@ from .pydantic_models import (
 )
 
 __all__ = [
-    "RoleBase", "RoleCreate", "RoleUpdate", "RoleResponse",
+    "TitleBase", "TitleCreate", "TitleUpdate", "TitleResponse",
     "UserBase", "UserCreate", "UserUpdate", "UserResponse", "AuthorInfo",
     "PostBase", "PostCreate", "PostUpdate", "PostResponse", "PostType", "PostStatus",
     "CommentBase", "CommentCreate", "CommentUpdate", "CommentResponse",

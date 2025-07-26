@@ -61,9 +61,9 @@ class DatabaseService:
                 
                 # Create user
                 query = """
-                    INSERT INTO users (id, username, email, password_hash, display_name, bio, avatar_url, role)
+                    INSERT INTO users (id, username, email, password_hash, display_name, bio, avatar_url, title)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING id, username, email, display_name, bio, avatar_url, role, is_active, is_verified, created_at, updated_at
+                    RETURNING id, username, email, display_name, bio, avatar_url, title, is_active, is_verified, created_at, updated_at
                 """
                 row = await conn.fetchrow(
                     query,
@@ -74,7 +74,7 @@ class DatabaseService:
                     user_data.get('display_name'),
                     user_data.get('bio'),
                     user_data.get('avatar_url'),
-                    user_data.get('role')  # UUID role or None
+                    user_data.get('title')  # UUID title or None
                 )
                 
                 logger.info(f"User created successfully | ID: {user_id} | Username: {user_data.get('username')}")
@@ -85,11 +85,11 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.role, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
-                       r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
+                       u.title, u.is_active, u.is_verified, u.created_at, u.updated_at,
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
+                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
                 FROM users u
-                LEFT JOIN roles r ON u.role = r.id
+                LEFT JOIN titles t ON u.title = t.id
                 WHERE u.id = $1
             """
             row = await conn.fetchrow(query, user_id)
@@ -100,11 +100,11 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.role, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
-                       r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
+                       u.title, u.is_active, u.is_verified, u.created_at, u.updated_at,
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
+                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
                 FROM users u
-                LEFT JOIN roles r ON u.role = r.id
+                LEFT JOIN titles t ON u.title = t.id
                 WHERE u.email = $1
             """
             row = await conn.fetchrow(query, email)
@@ -115,11 +115,11 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.role, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
-                       r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
+                       u.title, u.is_active, u.is_verified, u.created_at, u.updated_at,
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
+                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
                 FROM users u
-                LEFT JOIN roles r ON u.role = r.id
+                LEFT JOIN titles t ON u.title = t.id
                 WHERE u.username = $1
             """
             row = await conn.fetchrow(query, username)
@@ -163,91 +163,91 @@ class DatabaseService:
             result = await conn.execute(query, user_id)
             return result == "DELETE 1"
     
-    # Role operations
-    async def create_role(self, role_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new role"""
+    # Title operations (previously role operations)
+    async def create_title(self, title_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new title"""
         async with db_manager.get_connection() as conn:
-            role_id = uuid4()
+            title_id = uuid4()
             query = """
-                INSERT INTO roles (id, role_name, abbreviation, level_rank, role_type, description, 
+                INSERT INTO titles (id, title_name, abbreviation, level_rank, title_type, description, 
                                 level, is_elected, term_length, status)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                RETURNING id, role_name, abbreviation, level_rank, role_type, description, 
+                RETURNING id, title_name, abbreviation, level_rank, title_type, description, 
                          level, is_elected, term_length, status, created_at, updated_at
             """
             row = await conn.fetchrow(
                 query,
-                role_id,
-                role_data.get('role_name'),
-                role_data.get('abbreviation'),
-                role_data.get('level_rank'),
-                role_data.get('role_type'),
-                role_data.get('description'),
-                role_data.get('level'),
-                role_data.get('is_elected', False),
-                role_data.get('term_length'),
-                role_data.get('status', 'active')
+                title_id,
+                title_data.get('title_name'),
+                title_data.get('abbreviation'),
+                title_data.get('level_rank'),
+                title_data.get('title_type'),
+                title_data.get('description'),
+                title_data.get('level'),
+                title_data.get('is_elected', False),
+                title_data.get('term_length'),
+                title_data.get('status', 'active')
             )
             return dict(row)
     
-    async def get_role_by_id(self, role_id: UUID) -> Optional[Dict[str, Any]]:
-        """Get role by ID"""
+    async def get_title_by_id(self, title_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get title by ID"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT id, role_name, abbreviation, level_rank, role_type, description, 
+                SELECT id, title_name, abbreviation, level_rank, title_type, description, 
                        level, is_elected, term_length, status, created_at, updated_at
-                FROM roles WHERE id = $1
+                FROM titles WHERE id = $1
             """
-            row = await conn.fetchrow(query, role_id)
+            row = await conn.fetchrow(query, title_id)
             return dict(row) if row else None
     
-    async def get_all_roles(self) -> List[Dict[str, Any]]:
-        """Get all roles"""
+    async def get_all_titles(self) -> List[Dict[str, Any]]:
+        """Get all titles"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT id, role_name, abbreviation, level_rank, role_type, description, 
+                SELECT id, title_name, abbreviation, level_rank, title_type, description, 
                        level, is_elected, term_length, status, created_at, updated_at
-                FROM roles WHERE status = 'active' ORDER BY level_rank ASC, role_name ASC
+                FROM titles WHERE status = 'active' ORDER BY level_rank ASC, title_name ASC
             """
             rows = await conn.fetch(query)
             return [dict(row) for row in rows]
     
-    async def update_role(self, role_id: UUID, role_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Update role information"""
+    async def update_title(self, title_id: UUID, title_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update title information"""
         async with db_manager.get_connection() as conn:
             # Build dynamic update query
             set_clauses = []
             values = []
             param_num = 1
             
-            for field, value in role_data.items():
+            for field, value in title_data.items():
                 if value is not None and field not in ['id', 'created_at']:
                     set_clauses.append(f"{field} = ${param_num}")
                     values.append(value)
                     param_num += 1
             
             if not set_clauses:
-                return await self.get_role_by_id(role_id)
+                return await self.get_title_by_id(title_id)
             
             set_clauses.append(f"updated_at = NOW()")
-            values.append(role_id)
+            values.append(title_id)
             
             query = f"""
-                UPDATE roles 
+                UPDATE titles 
                 SET {', '.join(set_clauses)}
                 WHERE id = ${param_num}
-                RETURNING id, role_name, abbreviation, level_rank, role_type, description, 
+                RETURNING id, title_name, abbreviation, level_rank, title_type, description, 
                          level, is_elected, term_length, status, created_at, updated_at
             """
             
             row = await conn.fetchrow(query, *values)
             return dict(row) if row else None
     
-    async def delete_role(self, role_id: UUID) -> bool:
-        """Delete role by ID"""
+    async def delete_title(self, title_id: UUID) -> bool:
+        """Delete title by ID"""
         async with db_manager.get_connection() as conn:
-            query = "DELETE FROM roles WHERE id = $1"
-            result = await conn.execute(query, role_id)
+            query = "DELETE FROM titles WHERE id = $1"
+            result = await conn.execute(query, title_id)
             return result == "DELETE 1"
     
     # Post operations
@@ -285,11 +285,11 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
-                       r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
+                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN roles r ON u.role = r.id
+                LEFT JOIN titles t ON u.title = t.id
                 WHERE p.id = $1
             """
             row = await conn.fetchrow(query, post_id)
@@ -304,14 +304,14 @@ class DatabaseService:
                 'username': post.pop('author_username'),
                 'display_name': post.pop('author_display_name'),
                 'avatar_url': post.pop('author_avatar_url'),
-                'role_name': post.pop('role_name'),
+                'title_name': post.pop('title_name'),
                 'abbreviation': post.pop('abbreviation'),
                 'level_rank': post.pop('level_rank')
             }
             
-            # Remove other role fields from post
-            for field in ['role_id', 'role_type', 'role_description', 'level', 
-                         'is_elected', 'term_length', 'role_status']:
+            # Remove other title fields from post
+            for field in ['title_id', 'title_type', 'title_description', 'level', 
+                         'is_elected', 'term_length', 'title_status']:
                 post.pop(field, None)
             
             return post
@@ -334,11 +334,11 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
-                       r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
+                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN roles r ON u.role = r.id
+                LEFT JOIN titles t ON u.title = t.id
             """
             
             conditions = []
@@ -384,14 +384,14 @@ class DatabaseService:
                     'username': post.pop('author_username'),
                     'display_name': post.pop('author_display_name'),
                     'avatar_url': post.pop('author_avatar_url'),
-                    'role_name': post.pop('role_name'),
+                    'title_name': post.pop('title_name'),
                     'abbreviation': post.pop('abbreviation'),
                     'level_rank': post.pop('level_rank')
                 }
                 
-                # Remove other role fields from post
-                for field in ['role_id', 'role_type', 'role_description', 'level', 
-                             'is_elected', 'term_length', 'role_status']:
+                # Remove other title fields from post
+                for field in ['title_id', 'title_type', 'title_description', 'level', 
+                             'is_elected', 'term_length', 'title_status']:
                     post.pop(field, None)
                 
                 posts.append(post)
@@ -608,12 +608,12 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
-                       r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status,
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
+                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status,
                        (COALESCE(vote_count, 0) + COALESCE(comment_count, 0)) as engagement_score
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN roles r ON u.role = r.id
+                LEFT JOIN titles t ON u.title = t.id
                 LEFT JOIN (
                     SELECT post_id, COUNT(*) as vote_count
                     FROM votes 
@@ -641,14 +641,14 @@ class DatabaseService:
                     'username': post.pop('author_username'),
                     'display_name': post.pop('author_display_name'),
                     'avatar_url': post.pop('author_avatar_url'),
-                    'role_name': post.pop('role_name'),
+                    'title_name': post.pop('title_name'),
                     'abbreviation': post.pop('abbreviation'),
                     'level_rank': post.pop('level_rank')
                 }
                 
-                # Remove other role fields and internal scoring field
-                for field in ['role_id', 'role_type', 'role_description', 'level', 
-                             'is_elected', 'term_length', 'role_status', 'engagement_score']:
+                # Remove other title fields and internal scoring field
+                for field in ['title_id', 'title_type', 'title_description', 'level', 
+                             'is_elected', 'term_length', 'title_status', 'engagement_score']:
                     post.pop(field, None)
                 
                 posts.append(post)

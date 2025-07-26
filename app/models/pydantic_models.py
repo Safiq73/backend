@@ -9,33 +9,33 @@ from uuid import UUID
 from enum import Enum
 import re
 
-# Role models - now using foreign key relationship
-class RoleBase(BaseModel):
-    role_name: str = Field(..., min_length=1, max_length=100)
+# Title models - now using foreign key relationship
+class TitleBase(BaseModel):
+    title_name: str = Field(..., min_length=1, max_length=100)
     abbreviation: Optional[str] = Field(None, max_length=20)
     level_rank: Optional[int] = None
-    role_type: Optional[str] = Field(None, max_length=50)
+    title_type: Optional[str] = Field(None, max_length=50)
     description: Optional[str] = None
     level: Optional[str] = Field(None, max_length=50)
     is_elected: bool = False
     term_length: Optional[int] = None
     status: str = Field(default="active", max_length=20)
 
-class RoleCreate(RoleBase):
+class TitleCreate(TitleBase):
     pass
 
-class RoleUpdate(BaseModel):
-    role_name: Optional[str] = Field(None, min_length=1, max_length=100)
+class TitleUpdate(BaseModel):
+    title_name: Optional[str] = Field(None, min_length=1, max_length=100)
     abbreviation: Optional[str] = Field(None, max_length=20)
     level_rank: Optional[int] = None
-    role_type: Optional[str] = Field(None, max_length=50)
+    title_type: Optional[str] = Field(None, max_length=50)
     description: Optional[str] = None
     level: Optional[str] = Field(None, max_length=50)
     is_elected: Optional[bool] = None
     term_length: Optional[int] = None
     status: Optional[str] = Field(None, max_length=20)
 
-class RoleResponse(RoleBase):
+class TitleResponse(TitleBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -81,7 +81,7 @@ class UserBase(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
     bio: Optional[str] = Field(None, max_length=500)
     avatar_url: Optional[str] = Field(None, max_length=500)
-    role: Optional[UUID] = None  # Foreign key to role table
+    title: Optional[UUID] = None  # Foreign key to titles table
 
     @validator('username')
     def validate_username(cls, v):
@@ -130,7 +130,7 @@ class UserResponse(UserBase):
     is_verified: bool = False
     created_at: datetime
     updated_at: datetime
-    role_info: Optional[RoleResponse] = None  # Populated role information
+    title_info: Optional[TitleResponse] = None  # Populated title information
 
     class Config:
         from_attributes = True
@@ -141,7 +141,7 @@ class AuthorInfo(BaseModel):
     username: str
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
-    role_info: Optional[RoleResponse] = None  # Populated role information
+    title_info: Optional[TitleResponse] = None  # Populated title information
 
 # Post models - aligned with corrected schema
 class PostBase(BaseModel):

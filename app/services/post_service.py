@@ -44,29 +44,24 @@ class PostService:
         current_user_id: Optional[UUID] = None
     ) -> List[Dict[str, Any]]:
         """Get posts with filters and pagination"""
-        try:
-            # Get posts from database
-            posts = await self.db_service.get_posts(
-                skip=skip,
-                limit=limit,
-                post_type=post_type,
-                user_id=author_id,
-                location=location
-            )
+        # Get posts from database
+        posts = await self.db_service.get_posts(
+            skip=skip,
+            limit=limit,
+            post_type=post_type,
+            user_id=author_id,
+            location=location
+        )
 
-            # Convert to response format
-            responses = []
-            for post in posts:
-                response = await self._format_post_response(post, current_user_id)
-                responses.append(response)
+        # Convert to response format
+        responses = []
+        for post in posts:
+            response = await self._format_post_response(post, current_user_id)
+            responses.append(response)
+        
+        logger.info(f"Retrieved {len(responses)} posts with filters: type={post_type}, location={location}")
+        return responses
             
-            logger.info(f"Retrieved {len(responses)} posts with filters: type={post_type}, location={location}")
-            return responses
-            
-        except Exception as e:
-            
-            logger.error(f"Error retrieving posts: {e}")
-            raise HTTPException(status_code=500, detail="Failed to retrieve posts")
     
     async def get_post_by_id(self, post_id: UUID, current_user_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Get a specific post by ID"""

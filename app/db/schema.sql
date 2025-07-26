@@ -12,13 +12,13 @@ CREATE TYPE post_status AS ENUM ('open', 'in_progress', 'resolved', 'closed');
 CREATE TYPE notification_type AS ENUM ('issue_update', 'comment', 'vote', 'assignment', 'resolution', 'mention', 'follow');
 CREATE TYPE vote_type AS ENUM ('upvote', 'downvote');
 
--- Roles table for user roles
-CREATE TABLE roles (
+-- Titles table for user titles (previously roles - renamed to avoid confusion with permission roles)
+CREATE TABLE titles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    role_name VARCHAR(100) NOT NULL UNIQUE,
+    title_name VARCHAR(100) NOT NULL UNIQUE,
     abbreviation VARCHAR(20) UNIQUE,
     level_rank INTEGER,
-    role_type VARCHAR(50),
+    title_type VARCHAR(50),
     description TEXT,
     level VARCHAR(50),
     is_elected BOOLEAN DEFAULT FALSE,
@@ -37,7 +37,8 @@ CREATE TABLE users (
     display_name VARCHAR(100),
     bio TEXT,
     avatar_url TEXT,
-    role UUID REFERENCES roles(id) DEFAULT NULL,
+    title UUID REFERENCES titles(id) DEFAULT NULL,  -- Foreign key to titles table
+    rep_accounts UUID[] DEFAULT NULL, -- Array of representative IDs this user can manage
     is_active BOOLEAN DEFAULT TRUE,
     is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -49,10 +50,11 @@ CREATE TABLE users (
 -- Indexes for users table
 CREATE INDEX idx_users_email ON users (email);
 CREATE INDEX idx_users_username ON users (username);
-CREATE INDEX idx_users_role ON users (role);
+CREATE INDEX idx_users_title ON users (title);
 CREATE INDEX idx_users_active ON users (is_active);
 CREATE INDEX idx_users_search ON users USING GIN (search_vector);
 CREATE INDEX idx_users_created_at ON users (created_at DESC);
+CREATE INDEX idx_users_rep_accounts ON users USING GIN (rep_accounts);
 
 -- Posts table - aligned with implementation
 CREATE TABLE posts (

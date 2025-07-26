@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 import logging
+import traceback
 from app.core.config import settings
 from app.core.logging_config import setup_logging, get_logger
 from app.core.config_validator import validate_environment
@@ -114,6 +116,7 @@ def create_application() -> FastAPI:
     # app.add_exception_handler(RequestValidationError, validation_exception_handler)
     # app.add_exception_handler(Exception, general_exception_handler)
     # logger.info("Exception handlers registered")
+    
 
     # Register startup and shutdown events
     app.add_event_handler("startup", startup_db)

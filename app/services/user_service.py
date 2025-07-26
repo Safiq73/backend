@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from app.services.db_service import DatabaseService
 from app.core.security import get_password_hash
-from app.models.pydantic_models import RoleResponse
+from app.models.pydantic_models import TitleResponse
 
 logger = logging.getLogger(__name__)
 
@@ -17,20 +17,20 @@ class UserService:
     def __init__(self):
         self.db_service = DatabaseService()
     
-    def _format_user_with_role(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format user data to include role information"""
+    def _format_user_with_title(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format user data to include title information"""
         if not user_data:
             return user_data
         
-        # Extract role information if present
-        role_info = None
-        if user_data.get('role_id'):
-            role_info = {
+        # Extract title information if present
+        title_info = None
+        if user_data.get('role_id'):  # Note: DB column still called 'role_id' for now
+            title_info = {
                 'id': user_data.get('role_id'),
-                'role_name': user_data.get('role_name'),
+                'title_name': user_data.get('title_name'),  # Updated: DB column now called 'title_name'
                 'abbreviation': user_data.get('abbreviation'),
                 'level_rank': user_data.get('level_rank'),
-                'role_type': user_data.get('role_type'),
+                'title_type': user_data.get('title_type'),  # Updated: DB column now called 'title_type'
                 'description': user_data.get('role_description'),
                 'level': user_data.get('level'),
                 'is_elected': user_data.get('is_elected'),
@@ -49,12 +49,12 @@ class UserService:
             'display_name': user_data.get('display_name'),
             'bio': user_data.get('bio'),
             'avatar_url': user_data.get('avatar_url'),
-            'role': user_data.get('role'),
+            'title': user_data.get('title'),  # Updated: this field now called 'title' (refers to title UUID)
             'is_active': user_data.get('is_active'),
             'is_verified': user_data.get('is_verified'),
             'created_at': user_data.get('created_at'),
             'updated_at': user_data.get('updated_at'),
-            'role_info': role_info
+            'title_info': title_info
         }
         
         return clean_user_data
@@ -93,7 +93,7 @@ class UserService:
         """Get user by ID"""
         try:
             user = await self.db_service.get_user_by_id(user_id)
-            return self._format_user_with_role(user) if user else None
+            return self._format_user_with_title(user) if user else None
             
         except Exception as e:
             logger.error(f"Error getting user by ID {user_id}: {e}")
@@ -103,7 +103,7 @@ class UserService:
         """Get user by email"""
         try:
             user = await self.db_service.get_user_by_email(email)
-            return self._format_user_with_role(user) if user else None
+            return self._format_user_with_title(user) if user else None
             
         except Exception as e:
             logger.error(f"Error getting user by email {email}: {e}")
@@ -113,7 +113,7 @@ class UserService:
         """Get user by username"""
         try:
             user = await self.db_service.get_user_by_username(username)
-            return self._format_user_with_role(user) if user else None
+            return self._format_user_with_title(user) if user else None
             
         except Exception as e:
             logger.error(f"Error getting user by username {username}: {e}")

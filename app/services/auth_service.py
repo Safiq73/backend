@@ -52,11 +52,15 @@ class AuthService:
             access_token = create_access_token(data={"sub": user_id})
             refresh_token = create_refresh_token(data={"sub": user_id})
             
+            # Import settings to get token expiry time
+            from app.core.config import settings
+            
             logger.info(f"Tokens created successfully for user: {user_id}")
             return {
                 "access_token": access_token,
                 "refresh_token": refresh_token,
-                "token_type": "bearer"
+                "token_type": "bearer",
+                "expires_in": settings.access_token_expire_minutes * 60  
             }
         except Exception as e:
             log_error_with_context(

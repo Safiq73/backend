@@ -1,5 +1,5 @@
 """
-Role management endpoints
+Title management endpoints
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
