@@ -65,6 +65,8 @@ CREATE TABLE posts (
     area VARCHAR(100), -- Geographic area/location
     category VARCHAR(100), -- Category for filtering
     location VARCHAR(255), -- Location description
+    latitude DECIMAL(10, 8), -- Geographic latitude (India: 6.5° to 37.5° N)
+    longitude DECIMAL(11, 8), -- Geographic longitude (India: 68° to 97.5° E)
     tags TEXT[], -- Array of tags
     media_urls TEXT[], -- Array of media URLs (standardized name)
     -- Vote counts (updated via triggers)
@@ -79,7 +81,12 @@ CREATE TABLE posts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     -- Full-text search vector (will be updated via triggers)
-    search_vector tsvector
+    search_vector tsvector,
+    -- Constraints for India geographic bounds
+    CONSTRAINT check_latitude_india_bounds 
+        CHECK (latitude IS NULL OR (latitude >= 6.5 AND latitude <= 37.5)),
+    CONSTRAINT check_longitude_india_bounds 
+        CHECK (longitude IS NULL OR (longitude >= 68.0 AND longitude <= 97.5))
 );
 
 -- Indexes for posts table
@@ -94,6 +101,10 @@ CREATE INDEX idx_posts_last_activity ON posts (last_activity_at DESC);
 CREATE INDEX idx_posts_search ON posts USING GIN (search_vector);
 CREATE INDEX idx_posts_priority ON posts (priority_score DESC);
 CREATE INDEX idx_posts_tags ON posts USING GIN (tags);
+-- Spatial indexes for location-based queries
+CREATE INDEX idx_posts_coordinates ON posts (latitude, longitude) WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+CREATE INDEX idx_posts_latitude ON posts (latitude) WHERE latitude IS NOT NULL;
+CREATE INDEX idx_posts_longitude ON posts (longitude) WHERE longitude IS NOT NULL;
 
 -- Comments table with threading support
 CREATE TABLE comments (

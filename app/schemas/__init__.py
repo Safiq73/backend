@@ -134,6 +134,8 @@ class PostBase(BaseModel):
     area: Optional[str] = Field(None, max_length=100)
     category: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=255)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     tags: Optional[List[str]] = Field(default_factory=list)
     media_urls: Optional[List[str]] = Field(default_factory=list)
 
@@ -173,6 +175,24 @@ class PostBase(BaseModel):
                     raise ValueError('Invalid media URL format')
         return v
 
+    @validator('latitude')
+    def validate_latitude(cls, v):
+        """Validate latitude is within India bounds"""
+        if v is not None:
+            # India bounds: approximately 6.5° to 37.5° N
+            if not (6.5 <= v <= 37.5):
+                raise ValueError('Latitude must be within India boundaries (6.5° to 37.5° N)')
+        return v
+
+    @validator('longitude')
+    def validate_longitude(cls, v):
+        """Validate longitude is within India bounds"""
+        if v is not None:
+            # India bounds: approximately 68° to 97.5° E
+            if not (68.0 <= v <= 97.5):
+                raise ValueError('Longitude must be within India boundaries (68° to 97.5° E)')
+        return v
+
 
 class PostCreate(PostBase):
     pass
@@ -186,6 +206,8 @@ class PostUpdate(BaseModel):
     area: Optional[str] = Field(None, max_length=100)
     category: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=255)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     tags: Optional[List[str]] = None
     media_urls: Optional[List[str]] = None
 

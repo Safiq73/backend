@@ -256,9 +256,9 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             post_id = uuid4()
             query = """
-                INSERT INTO posts (id, user_id, title, content, post_type, area, category, location, tags, media_urls)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                RETURNING id, user_id, title, content, post_type, area, category, location, tags, media_urls, created_at, updated_at
+                INSERT INTO posts (id, user_id, title, content, post_type, area, category, location, latitude, longitude, tags, media_urls)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                RETURNING id, user_id, title, content, post_type, area, category, location, latitude, longitude, tags, media_urls, created_at, updated_at
             """
             row = await conn.fetchrow(
                 query,
@@ -270,6 +270,8 @@ class DatabaseService:
                 post_data.get('area'),
                 post_data.get('category'),
                 post_data.get('location'),
+                post_data.get('latitude'),
+                post_data.get('longitude'),
                 post_data.get('tags', []),
                 post_data.get('media_urls', [])
             )
@@ -279,7 +281,7 @@ class DatabaseService:
         """Get post by ID with author information"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT p.id, p.title, p.content, p.post_type, p.media_urls, p.location, p.tags,
+                SELECT p.id, p.title, p.content, p.post_type, p.media_urls, p.location, p.latitude, p.longitude, p.tags,
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,

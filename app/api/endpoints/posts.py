@@ -233,6 +233,9 @@ async def create_post(
             'post_type': post_data.post_type,
             'area': post_data.area,
             'category': post_data.category,
+            'location': post_data.location,
+            'latitude': post_data.latitude,
+            'longitude': post_data.longitude,
             'media_urls': post_data.media_urls or [],
             'tags': post_data.tags or [],  # Add role tags
             'user_id': current_user['id']
@@ -260,6 +263,68 @@ async def create_post(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create post"
+        )
+
+
+@router.get("/nearby", response_model=APIResponse)
+async def get_nearby_posts(
+    latitude: float = Query(..., ge=6.5, le=37.5, description="Latitude within India bounds"),
+    longitude: float = Query(..., ge=68.0, le=97.5, description="Longitude within India bounds"),
+    radius: float = Query(10.0, ge=0.1, le=100.0, description="Search radius in kilometers"),
+    post_type: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """Get posts near a specific location"""
+    try:
+        user_id = current_user["id"] if current_user else None
+        
+        logger.info(
+            f"Fetching nearby posts | Lat: {latitude}, Lng: {longitude}, Radius: {radius}km | "
+            f"Filters: type={post_type}, category={category} | User: {user_id or 'anonymous'}"
+        )
+        
+        # Get nearby posts using spatial query
+        nearby_posts = await post_service.get_posts_near_location(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius,
+            post_type=post_type,
+            category=category,
+            limit=limit,
+            offset=offset,
+            user_id=user_id
+        )
+        
+        logger.info(f"Found {len(nearby_posts)} posts within {radius}km of location")
+        
+        return APIResponse(
+            success=True,
+            message=f"Found {len(nearby_posts)} posts within {radius}km",
+            data={
+                "posts": nearby_posts,
+                "total": len(nearby_posts),
+                "center": {"latitude": latitude, "longitude": longitude},
+                "radius": radius
+            }
+        )
+        
+    except Exception as e:
+        log_error_with_context(
+            logger, e,
+            {
+                'operation': 'get_nearby_posts',
+                'latitude': latitude,
+                'longitude': longitude,
+                'radius': radius,
+                'user_id': user_id
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch nearby posts"
         )
 
 
