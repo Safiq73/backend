@@ -86,7 +86,7 @@ class DatabaseService:
             query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
                        u.role, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
+                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM users u
                 LEFT JOIN roles r ON u.role = r.id
@@ -101,7 +101,7 @@ class DatabaseService:
             query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
                        u.role, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
+                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM users u
                 LEFT JOIN roles r ON u.role = r.id
@@ -116,7 +116,7 @@ class DatabaseService:
             query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
                        u.role, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
+                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM users u
                 LEFT JOIN roles r ON u.role = r.id
@@ -169,10 +169,10 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             role_id = uuid4()
             query = """
-                INSERT INTO roles (id, role_name, abbreviation, h_order, role_type, description, 
+                INSERT INTO roles (id, role_name, abbreviation, level_rank, role_type, description, 
                                 level, is_elected, term_length, status)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                RETURNING id, role_name, abbreviation, h_order, role_type, description, 
+                RETURNING id, role_name, abbreviation, level_rank, role_type, description, 
                          level, is_elected, term_length, status, created_at, updated_at
             """
             row = await conn.fetchrow(
@@ -180,7 +180,7 @@ class DatabaseService:
                 role_id,
                 role_data.get('role_name'),
                 role_data.get('abbreviation'),
-                role_data.get('h_order'),
+                role_data.get('level_rank'),
                 role_data.get('role_type'),
                 role_data.get('description'),
                 role_data.get('level'),
@@ -194,7 +194,7 @@ class DatabaseService:
         """Get role by ID"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT id, role_name, abbreviation, h_order, role_type, description, 
+                SELECT id, role_name, abbreviation, level_rank, role_type, description, 
                        level, is_elected, term_length, status, created_at, updated_at
                 FROM roles WHERE id = $1
             """
@@ -205,9 +205,9 @@ class DatabaseService:
         """Get all roles"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT id, role_name, abbreviation, h_order, role_type, description, 
+                SELECT id, role_name, abbreviation, level_rank, role_type, description, 
                        level, is_elected, term_length, status, created_at, updated_at
-                FROM roles WHERE status = 'active' ORDER BY h_order ASC, role_name ASC
+                FROM roles WHERE status = 'active' ORDER BY level_rank ASC, role_name ASC
             """
             rows = await conn.fetch(query)
             return [dict(row) for row in rows]
@@ -236,7 +236,7 @@ class DatabaseService:
                 UPDATE roles 
                 SET {', '.join(set_clauses)}
                 WHERE id = ${param_num}
-                RETURNING id, role_name, abbreviation, h_order, role_type, description, 
+                RETURNING id, role_name, abbreviation, level_rank, role_type, description, 
                          level, is_elected, term_length, status, created_at, updated_at
             """
             
@@ -285,7 +285,7 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
+                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
@@ -306,7 +306,7 @@ class DatabaseService:
                 'avatar_url': post.pop('author_avatar_url'),
                 'role_name': post.pop('role_name'),
                 'abbreviation': post.pop('abbreviation'),
-                'h_order': post.pop('h_order')
+                'level_rank': post.pop('level_rank')
             }
             
             # Remove other role fields from post
@@ -334,7 +334,7 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
+                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
@@ -386,7 +386,7 @@ class DatabaseService:
                     'avatar_url': post.pop('author_avatar_url'),
                     'role_name': post.pop('role_name'),
                     'abbreviation': post.pop('abbreviation'),
-                    'h_order': post.pop('h_order')
+                    'level_rank': post.pop('level_rank')
                 }
                 
                 # Remove other role fields from post
@@ -608,7 +608,7 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       r.id as role_id, r.role_name, r.abbreviation, r.h_order, r.role_type,
+                       r.id as role_id, r.role_name, r.abbreviation, r.level_rank, r.role_type,
                        r.description as role_description, r.level, r.is_elected, r.term_length, r.status as role_status,
                        (COALESCE(vote_count, 0) + COALESCE(comment_count, 0)) as engagement_score
                 FROM posts p
@@ -643,7 +643,7 @@ class DatabaseService:
                     'avatar_url': post.pop('author_avatar_url'),
                     'role_name': post.pop('role_name'),
                     'abbreviation': post.pop('abbreviation'),
-                    'h_order': post.pop('h_order')
+                    'level_rank': post.pop('level_rank')
                 }
                 
                 # Remove other role fields and internal scoring field

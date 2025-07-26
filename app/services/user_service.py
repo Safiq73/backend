@@ -29,7 +29,7 @@ class UserService:
                 'id': user_data.get('role_id'),
                 'role_name': user_data.get('role_name'),
                 'abbreviation': user_data.get('abbreviation'),
-                'h_order': user_data.get('h_order'),
+                'level_rank': user_data.get('level_rank'),
                 'role_type': user_data.get('role_type'),
                 'description': user_data.get('role_description'),
                 'level': user_data.get('level'),

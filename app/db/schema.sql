@@ -17,7 +17,7 @@ CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     role_name VARCHAR(100) NOT NULL UNIQUE,
     abbreviation VARCHAR(20) UNIQUE,
-    h_order INTEGER,
+    level_rank INTEGER,
     role_type VARCHAR(50),
     description TEXT,
     level VARCHAR(50),

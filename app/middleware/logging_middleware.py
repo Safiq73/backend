@@ -1,8 +1,10 @@
 import time
 import uuid
+import asyncio
 from typing import Callable, Optional
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from anyio import EndOfStream
 from app.core.logging_config import get_logger, log_request_info, log_performance_metric
 
 """
@@ -79,6 +81,17 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             
             return response
             
+        except (EndOfStream, ConnectionError, asyncio.CancelledError) as e:
+            duration = time.time() - start_time
+            # Log connection issues but don't spam logs
+            self.logger.warning(
+                f"Connection issue | ID: {request_id} | "
+                f"{request.method} {request.url.path} | "
+                f"Error: {type(e).__name__} | "
+                f"Duration: {duration:.3f}s"
+            )
+            # Re-raise connection-related exceptions
+            raise
         except Exception as e:
             duration = time.time() - start_time
             
