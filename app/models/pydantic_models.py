@@ -161,6 +161,7 @@ class AuthorInfo(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     title_info: Optional[TitleResponse] = None  # Populated title information
+    rep_accounts: List['RepresentativeWithDetails'] = []  # Representative account details
 
 # Post models - aligned with corrected schema
 class PostBase(BaseModel):
@@ -343,7 +344,51 @@ class PostSort(BaseModel):
 class RepresentativeBase(BaseModel):
     jurisdiction_id: UUID
     title_id: UUID
-    
+
+# Enhanced title information model
+class TitleInfo(BaseModel):
+    id: UUID
+    title_name: str
+    abbreviation: Optional[str] = None
+    level_rank: Optional[int] = None
+    title_type: Optional[str] = None
+    description: Optional[str] = None
+    level: Optional[str] = None
+    is_elected: Optional[bool] = None
+    term_length: Optional[int] = None
+    status: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Enhanced jurisdiction information model  
+class JurisdictionInfo(BaseModel):
+    id: UUID
+    name: str
+    level_name: str
+    level_rank: int
+    parent_jurisdiction_id: Optional[UUID] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# Enhanced representative response with detailed info
+class RepresentativeWithDetails(BaseModel):
+    id: UUID
+    user_id: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+    title_info: TitleInfo
+    jurisdiction_info: JurisdictionInfo
+
+    class Config:
+        from_attributes = True
+
+# Legacy representative response for backward compatibility
 class RepresentativeResponse(RepresentativeBase, BaseModelWithTimestamps):
     id: UUID
     user_id: Optional[UUID] = None
@@ -361,7 +406,9 @@ class RepresentativeLinkRequest(BaseModel):
     representative_id: UUID
 
 class UserWithRepresentativeResponse(UserResponse):
-    linked_representative: Optional[RepresentativeResponse] = None
+    rep_accounts: List[RepresentativeWithDetails] = []
 
 # Enable forward references
 CommentResponse.model_rebuild()
+AuthorInfo.model_rebuild()
+

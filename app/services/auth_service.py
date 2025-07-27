@@ -198,6 +198,7 @@ class AuthService:
     
     async def get_user_by_id(self, user_id: UUID) -> Optional[Dict[str, Any]]:
         """Get user by ID for token validation"""
+
         try:
             user = await self.db_service.get_user_by_id(user_id)
             return user
@@ -216,7 +217,9 @@ async def get_current_user(
     
     try:
         # Verify token format
+
         payload = verify_token(credentials.credentials)
+
         if not payload:
             return None
         
@@ -236,13 +239,14 @@ async def get_current_user(
         except ValueError:
             logger.debug(f"Invalid user ID format: {user_id}")
             return None
-        
+
         # Get user from database
         user = await auth_service.get_user_by_id(user_uuid)
+        
         if user and user.get('is_active', True):
             logger.debug(f"Current user retrieved | User ID: {user['id']}")
             return user
-        
+
         return None
             
     except Exception as e:

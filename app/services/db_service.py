@@ -61,9 +61,9 @@ class DatabaseService:
                 
                 # Create user
                 query = """
-                    INSERT INTO users (id, username, email, password_hash, display_name, bio, avatar_url, title)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING id, username, email, display_name, bio, avatar_url, title, is_active, is_verified, created_at, updated_at
+                    INSERT INTO users (id, username, email, password_hash, display_name, bio, avatar_url)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id, username, email, display_name, bio, avatar_url, is_active, is_verified, created_at, updated_at
                 """
                 row = await conn.fetchrow(
                     query,
@@ -73,57 +73,186 @@ class DatabaseService:
                     user_data.get('password_hash'),
                     user_data.get('display_name'),
                     user_data.get('bio'),
-                    user_data.get('avatar_url'),
-                    user_data.get('title')  # UUID title or None
+                    user_data.get('avatar_url')
                 )
                 
                 logger.info(f"User created successfully | ID: {user_id} | Username: {user_data.get('username')}")
                 return dict(row)
     
     async def get_user_by_id(self, user_id: UUID) -> Optional[Dict[str, Any]]:
-        """Get user by ID"""
+        """Get user by ID with detailed representative account information"""
         async with db_manager.get_connection() as conn:
-            query = """
+            # Get basic user information
+            user_query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.title, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
-                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
+                       u.rep_accounts, u.is_active, u.is_verified, u.created_at, u.updated_at
                 FROM users u
-                LEFT JOIN titles t ON u.title = t.id
                 WHERE u.id = $1
             """
-            row = await conn.fetchrow(query, user_id)
-            return dict(row) if row else None
+
+            user_row = await conn.fetchrow(user_query, user_id)
+            if not user_row:
+                return None
+            
+            user_data = dict(user_row)
+
+            # Get detailed representative account information if rep_accounts exist
+            if user_data.get('rep_accounts'):
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.id = ANY($1) AND r.user_id = $2
+                    ORDER BY t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_data['rep_accounts'], user_id)
+                
+                # Format representative accounts with nested structure
+                rep_accounts = []
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    rep_accounts.append(formatted_rep)
+                
+                user_data['rep_accounts'] = rep_accounts
+            else:
+                user_data['rep_accounts'] = []
+
+            return user_data
         
     async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Get user by email"""
+        """Get user by email with detailed representative account information"""
         async with db_manager.get_connection() as conn:
-            query = """
+            # Get basic user information
+            user_query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.title, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
-                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
+                       u.rep_accounts, u.is_active, u.is_verified, u.created_at, u.updated_at
                 FROM users u
-                LEFT JOIN titles t ON u.title = t.id
                 WHERE u.email = $1
             """
-            row = await conn.fetchrow(query, email)
-            return dict(row) if row else None
+            user_row = await conn.fetchrow(user_query, email)
+            if not user_row:
+                return None
+            
+            user_data = dict(user_row)
+            
+            # Get detailed representative account information if rep_accounts exist
+            if user_data.get('rep_accounts'):
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.id = ANY($1) AND r.user_id = $2
+                    ORDER BY t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_data['rep_accounts'], user_data['id'])
+                
+                # Format representative accounts with nested structure
+                rep_accounts = []
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    rep_accounts.append(formatted_rep)
+                
+                user_data['rep_accounts'] = rep_accounts
+            else:
+                user_data['rep_accounts'] = []
+            
+            return user_data
     
     async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
-        """Get user by username"""
+        """Get user by username with detailed representative account information"""
         async with db_manager.get_connection() as conn:
-            query = """
+            # Get basic user information
+            user_query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.title, u.is_active, u.is_verified, u.created_at, u.updated_at,
-                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
-                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
+                       u.rep_accounts, u.is_active, u.is_verified, u.created_at, u.updated_at
                 FROM users u
-                LEFT JOIN titles t ON u.title = t.id
                 WHERE u.username = $1
             """
-            row = await conn.fetchrow(query, username)
-            return dict(row) if row else None
+            user_row = await conn.fetchrow(user_query, username)
+            if not user_row:
+                return None
+            
+            user_data = dict(user_row)
+            
+            # Get detailed representative account information if rep_accounts exist
+            if user_data.get('rep_accounts'):
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.id = ANY($1) AND r.user_id = $2
+                    ORDER BY t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_data['rep_accounts'], user_data['id'])
+                
+                # Format representative accounts with nested structure
+                rep_accounts = []
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    rep_accounts.append(formatted_rep)
+                
+                user_data['rep_accounts'] = rep_accounts
+            else:
+                user_data['rep_accounts'] = []
+            
+            return user_data
     
     async def update_user(self, user_id: UUID, user_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update user information"""
@@ -278,18 +407,16 @@ class DatabaseService:
             return dict(row)
     
     async def get_post_by_id(self, post_id: UUID) -> Optional[Dict[str, Any]]:
-        """Get post by ID with author information"""
+        """Get post by ID with author information including rep_accounts"""
         async with db_manager.get_connection() as conn:
             query = """
                 SELECT p.id, p.title, p.content, p.post_type, p.media_urls, p.location, p.latitude, p.longitude, p.tags,
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
-                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
+                       u.rep_accounts
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN titles t ON u.title = t.id
                 WHERE p.id = $1
             """
             row = await conn.fetchrow(query, post_id)
@@ -298,21 +425,52 @@ class DatabaseService:
             
             # Format the response
             post = dict(row)
+            user_id = post.pop('user_id')
+            rep_accounts_ids = post.pop('rep_accounts')
+            
+            # Get detailed representative account information if rep_accounts exist
+            rep_accounts = []
+            if rep_accounts_ids:
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.id = ANY($1) AND r.user_id = $2
+                    ORDER BY t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, rep_accounts_ids, user_id)
+                
+                # Format representative accounts with nested structure
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    rep_accounts.append(formatted_rep)
             
             post['author'] = {
-                'id': post.pop('user_id'),
+                'id': user_id,
                 'username': post.pop('author_username'),
                 'display_name': post.pop('author_display_name'),
                 'avatar_url': post.pop('author_avatar_url'),
-                'title_name': post.pop('title_name'),
-                'abbreviation': post.pop('abbreviation'),
-                'level_rank': post.pop('level_rank')
+                'rep_accounts': rep_accounts
             }
-            
-            # Remove other title fields from post
-            for field in ['title_id', 'title_type', 'title_description', 'level', 
-                         'is_elected', 'term_length', 'title_status']:
-                post.pop(field, None)
             
             return post
     
@@ -325,7 +483,7 @@ class DatabaseService:
         location: Optional[str] = None,
         tags: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        """Get posts with filters and pagination"""
+        """Get posts with filters and pagination including author rep_accounts"""
         async with db_manager.get_connection() as conn:
             # Build the base query
             query = """
@@ -334,11 +492,9 @@ class DatabaseService:
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
-                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status
+                       u.rep_accounts
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN titles t ON u.title = t.id
             """
             
             conditions = []
@@ -375,24 +531,68 @@ class DatabaseService:
             
             rows = await conn.fetch(query, *values)
             
+            # Get unique user IDs to fetch rep_accounts for all authors
+            user_ids = list(set([row['user_id'] for row in rows]))
+            
+            # Fetch all rep_accounts data for these users
+            user_rep_accounts = {}
+            if user_ids:
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.user_id = ANY($1)
+                    ORDER BY r.user_id, t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_ids)
+                
+                # Group rep accounts by user_id
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    user_id_key = rep_data['user_id']
+                    
+                    if user_id_key not in user_rep_accounts:
+                        user_rep_accounts[user_id_key] = []
+                    
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    user_rep_accounts[user_id_key].append(formatted_rep)
+                
+                # Ensure each user's rep_accounts are sorted by level_rank ASC (lowest rank number = highest position first)
+                for user_id_key in user_rep_accounts:
+                    user_rep_accounts[user_id_key].sort(key=lambda x: x['title']['level_rank'], reverse=False)
+            
             # Format the response
             posts = []
             for row in rows:
                 post = dict(row)
+                author_user_id = post.pop('user_id')
                 post['author'] = {
-                    'id': post.pop('user_id'),
+                    'id': author_user_id,
                     'username': post.pop('author_username'),
                     'display_name': post.pop('author_display_name'),
                     'avatar_url': post.pop('author_avatar_url'),
-                    'title_name': post.pop('title_name'),
-                    'abbreviation': post.pop('abbreviation'),
-                    'level_rank': post.pop('level_rank')
+                    'rep_accounts': user_rep_accounts.get(author_user_id, [])
                 }
-                
-                # Remove other title fields from post
-                for field in ['title_id', 'title_type', 'title_description', 'level', 
-                             'is_elected', 'term_length', 'title_status']:
-                    post.pop(field, None)
+                # Remove the rep_accounts field from the post level since we don't need it
+                post.pop('rep_accounts', None)
                 
                 posts.append(post)
             
@@ -525,12 +725,13 @@ class DatabaseService:
             return dict(row)
     
     async def get_comments_by_post(self, post_id: UUID) -> List[Dict[str, Any]]:
-        """Get all comments for a post"""
+        """Get all comments for a post with author rep_accounts"""
         async with db_manager.get_connection() as conn:
             query = """
                 SELECT c.id, c.post_id, c.content, c.parent_id, c.created_at, c.updated_at,
                        u.id as user_id, u.username as author_username, 
-                       u.display_name as author_display_name, u.avatar_url as author_avatar_url
+                       u.display_name as author_display_name, u.avatar_url as author_avatar_url,
+                       u.rep_accounts
                 FROM comments c
                 JOIN users u ON c.user_id = u.id
                 WHERE c.post_id = $1
@@ -538,15 +739,67 @@ class DatabaseService:
             """
             rows = await conn.fetch(query, post_id)
             
+            # Get unique user IDs to fetch rep_accounts for all comment authors
+            user_ids = list(set([row['user_id'] for row in rows]))
+            
+            # Fetch all rep_accounts data for these users
+            user_rep_accounts = {}
+            if user_ids:
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.user_id = ANY($1)
+                    ORDER BY r.user_id, t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_ids)
+                
+                # Group rep accounts by user_id
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    user_id_key = rep_data['user_id']
+                    
+                    if user_id_key not in user_rep_accounts:
+                        user_rep_accounts[user_id_key] = []
+                    
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    user_rep_accounts[user_id_key].append(formatted_rep)
+                
+                # Ensure each user's rep_accounts are sorted by level_rank ASC (lowest rank number = highest position first)
+                for user_id_key in user_rep_accounts:
+                    user_rep_accounts[user_id_key].sort(key=lambda x: x['title']['level_rank'], reverse=False)
+            
             comments = []
             for row in rows:
                 comment = dict(row)
+                author_user_id = comment.pop('user_id')
                 comment['author'] = {
-                    'id': comment.pop('user_id'),
+                    'id': author_user_id,
                     'username': comment.pop('author_username'),
                     'display_name': comment.pop('author_display_name'),
-                    'avatar_url': comment.pop('author_avatar_url')
+                    'avatar_url': comment.pop('author_avatar_url'),
+                    'rep_accounts': user_rep_accounts.get(author_user_id, [])
                 }
+                # Remove the rep_accounts field from the comment level since we don't need it
+                comment.pop('rep_accounts', None)
                 comments.append(comment)
             
             return comments
@@ -601,19 +854,17 @@ class DatabaseService:
             return dict(row)
     
     async def get_trending_posts(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get trending posts based on engagement in the last N hours"""
+        """Get trending posts based on engagement in the last N hours including author rep_accounts"""
         async with db_manager.get_connection() as conn:
             query = """
                 SELECT p.id, p.title, p.content, p.post_type, p.media_urls, p.location, p.tags,
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
-                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.title_type,
-                       t.description as title_description, t.level, t.is_elected, t.term_length, t.status as title_status,
+                       u.rep_accounts,
                        (COALESCE(vote_count, 0) + COALESCE(comment_count, 0)) as engagement_score
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN titles t ON u.title = t.id
                 LEFT JOIN (
                     SELECT post_id, COUNT(*) as vote_count
                     FROM votes 
@@ -633,23 +884,69 @@ class DatabaseService:
             
             rows = await conn.fetch(query, limit)
             
+            # Get unique user IDs to fetch rep_accounts for all authors
+            user_ids = list(set([row['user_id'] for row in rows]))
+            
+            # Fetch all rep_accounts data for these users
+            user_rep_accounts = {}
+            if user_ids:
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.user_id = ANY($1)
+                    ORDER BY r.user_id, t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_ids)
+                
+                # Group rep accounts by user_id
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    user_id_key = rep_data['user_id']
+                    
+                    if user_id_key not in user_rep_accounts:
+                        user_rep_accounts[user_id_key] = []
+                    
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    user_rep_accounts[user_id_key].append(formatted_rep)
+                
+                # Ensure each user's rep_accounts are sorted by level_rank ASC (lowest rank number = highest position first)
+                for user_id_key in user_rep_accounts:
+                    user_rep_accounts[user_id_key].sort(key=lambda x: x['title']['level_rank'], reverse=False)
+            
             posts = []
             for row in rows:
                 post = dict(row)
+                author_user_id = post.pop('user_id')
                 post['author'] = {
-                    'id': post.pop('user_id'),
+                    'id': author_user_id,
                     'username': post.pop('author_username'),
                     'display_name': post.pop('author_display_name'),
                     'avatar_url': post.pop('author_avatar_url'),
-                    'title_name': post.pop('title_name'),
-                    'abbreviation': post.pop('abbreviation'),
-                    'level_rank': post.pop('level_rank')
+                    'rep_accounts': user_rep_accounts.get(author_user_id, [])
                 }
                 
-                # Remove other title fields and internal scoring field
-                for field in ['title_id', 'title_type', 'title_description', 'level', 
-                             'is_elected', 'term_length', 'title_status', 'engagement_score']:
-                    post.pop(field, None)
+                # Remove internal scoring field and rep_accounts field at post level
+                post.pop('engagement_score', None)
+                post.pop('rep_accounts', None)
                 
                 posts.append(post)
             

@@ -25,8 +25,7 @@ try:
     print("✅ Configuration validation completed successfully")
 except (ValueError, KeyError, AttributeError) as e:
     print(f"❌ Configuration validation failed: {e}")
-    if not getattr(settings, 'debug', True):
-        raise
+    
     print("⚠️  Continuing in debug mode with configuration warnings...")
 
 # Setup logging with enhanced verbosity for development
@@ -112,10 +111,10 @@ def create_application() -> FastAPI:
     logger.info("API routes registered")
 
     # Register exception handlers
-    # app.add_exception_handler(HTTPException, http_exception_handler)
-    # app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    # app.add_exception_handler(Exception, general_exception_handler)
-    # logger.info("Exception handlers registered")
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, general_exception_handler)
+    logger.info("Exception handlers registered")
     
 
     # Register startup and shutdown events

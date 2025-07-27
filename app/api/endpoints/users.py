@@ -27,10 +27,9 @@ async def get_current_user_profile(current_user: Dict[str, Any] = Depends(get_cu
     # Remove password_hash from response
     user_data.pop('password_hash', None)
     
-    # Get linked representative information
-    linked_rep = await representative_service.get_user_linked_representative(current_user["id"])
-    if linked_rep:
-        user_data['linked_representative'] = linked_rep
+    # Get all representative accounts linked to the user
+    rep_accounts = await representative_service.get_user_rep_accounts(current_user["id"])
+    user_data['rep_accounts'] = rep_accounts
     
     return APIResponse(
         success=True,

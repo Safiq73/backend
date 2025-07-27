@@ -16,6 +16,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     Handle HTTPException and format it as APIResponse
     """
     logger.warning(f"HTTP Exception | Status: {exc.status_code} | Detail: {exc.detail} | Path: {request.url.path}")
+    print(traceback.print_exc())
     
     # Format the response as APIResponse
     response_data = APIResponse(
@@ -35,6 +36,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """
     Handle Pydantic validation errors and format them as APIResponse
     """
+    print(traceback.print_exc())
     logger.warning(f"Validation Exception | Errors: {exc.errors()} | Path: {request.url.path}")
     
     # Extract error messages
@@ -63,7 +65,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     """
     logger.error(f"Unexpected Exception | Type: {type(exc).__name__} | Message: {str(exc)} | Path: {request.url.path}")
     logger.error(f"Traceback: {traceback.format_exc()}")
-    
+    print(traceback.print_exc())
     response_data = APIResponse(
         success=False,
         message="An unexpected error occurred",

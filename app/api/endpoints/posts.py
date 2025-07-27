@@ -334,41 +334,23 @@ async def get_post(
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Get a specific post by ID"""
-    try:
-        user_id = current_user["id"] if current_user else None
-        logger.info(f"Fetching post | Post ID: {post_id} | User: {user_id or 'anonymous'}")
-        
-        post = await post_service.get_post_by_id(post_id, user_id)
-        if not post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found"
-            )
-        
-        logger.info(f"Post fetched successfully | Post ID: {post_id}")
-        
-        return APIResponse(
-            success=True,
-            message="Post retrieved successfully",
-            data={"post": post}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'get_post',
-                'post_id': post_id,
-                'user_id': user_id
-            }
-        )
+    user_id = current_user["id"] if current_user else None
+    logger.info(f"Fetching post | Post ID: {post_id} | User: {user_id or 'anonymous'}")
+    
+    post = await post_service.get_post_by_id(post_id, user_id)
+    if not post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch post"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
         )
-
+    
+    logger.info(f"Post fetched successfully | Post ID: {post_id}")
+    
+    return APIResponse(
+        success=True,
+        message="Post retrieved successfully",
+        data={"post": post}
+    )
 
 @router.put("/{post_id}", response_model=APIResponse)
 async def update_post(
@@ -377,51 +359,33 @@ async def update_post(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Update a post"""
-    try:
-        logger.info(f"Updating post | Post ID: {post_id} | User: {current_user['id']}")
-        
-        # Check if post exists and user owns it
-        existing_post = await post_service.get_post_by_id(post_id, current_user['id'])
-        if not existing_post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found"
-            )
-        
-        if existing_post['user_id'] != current_user['id']:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to update this post"
-            )
-        
-        # Update post
-        update_data = post_data.dict(exclude_unset=True)
-        post = await post_service.update_post(post_id, update_data)
-        
-        logger.info(f"Post updated successfully | Post ID: {post_id}")
-        
-        return APIResponse(
-            success=True,
-            message="Post updated successfully",
-            data={"post": post}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'update_post',
-                'post_id': post_id,
-                'user_id': current_user['id']
-            }
-        )
+    logger.info(f"Updating post | Post ID: {post_id} | User: {current_user['id']}")
+    
+    # Check if post exists and user owns it
+    existing_post = await post_service.get_post_by_id(post_id, current_user['id'])
+    if not existing_post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update post"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
         )
-
+    
+    if existing_post['user_id'] != current_user['id']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this post"
+        )
+    
+    # Update post
+    update_data = post_data.dict(exclude_unset=True)
+    post = await post_service.update_post(post_id, update_data)
+    
+    logger.info(f"Post updated successfully | Post ID: {post_id}")
+    
+    return APIResponse(
+        success=True,
+        message="Post updated successfully",
+        data={"post": post}
+    )
 
 @router.delete("/{post_id}", response_model=APIResponse)
 async def delete_post(
@@ -429,50 +393,32 @@ async def delete_post(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Delete a post"""
-    try:
-        logger.info(f"Deleting post | Post ID: {post_id} | User: {current_user['id']}")
-        
-        # Check if post exists and user owns it
-        existing_post = await post_service.get_post_by_id(post_id, current_user['id'])
-        if not existing_post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found"
-            )
-        
-        if existing_post['user_id'] != current_user['id']:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to delete this post"
-            )
-        
-        # Delete post
-        await post_service.delete_post(post_id)
-        
-        logger.info(f"Post deleted successfully | Post ID: {post_id}")
-        
-        return APIResponse(
-            success=True,
-            message="Post deleted successfully",
-            data={}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'delete_post',
-                'post_id': post_id,
-                'user_id': current_user['id']
-            }
-        )
+    logger.info(f"Deleting post | Post ID: {post_id} | User: {current_user['id']}")
+    
+    # Check if post exists and user owns it
+    existing_post = await post_service.get_post_by_id(post_id, current_user['id'])
+    if not existing_post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete post"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
         )
-
+    
+    if existing_post['user_id'] != current_user['id']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this post"
+        )
+    
+    # Delete post
+    await post_service.delete_post(post_id)
+    
+    logger.info(f"Post deleted successfully | Post ID: {post_id}")
+    
+    return APIResponse(
+        success=True,
+        message="Post deleted successfully",
+        data={}
+    )
 
 @router.post("/{post_id}/vote", response_model=APIResponse)
 async def vote_on_post(
@@ -481,44 +427,27 @@ async def vote_on_post(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Vote on a post"""
-    try:
-        logger.info(f"Voting on post | Post ID: {post_id} | User: {current_user['id']} | Vote: {vote_type}")
-        
-        # Check if post exists
-        post = await post_service.get_post_by_id(post_id, current_user['id'])
-        if not post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found"
-            )
-        
-        # Vote on post
-        result = await post_service.vote_on_post(post_id, current_user['id'], vote_type)
-        
-        logger.info(f"Vote recorded successfully | Post ID: {post_id} | Vote: {vote_type}")
-        
-        return APIResponse(
-            success=True,
-            message=f"Vote {vote_type} recorded successfully",
-            data=result
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'vote_on_post',
-                'post_id': post_id,
-                'user_id': current_user['id'],
-                'vote_type': vote_type
-            }
-        )
+    logger.info(f"Voting on post | Post ID: {post_id} | User: {current_user['id']} | Vote: {vote_type}")
+    
+    # Check if post exists
+    post = await post_service.get_post_by_id(post_id, current_user['id'])
+    if not post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to record vote"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
         )
+    
+    # Vote on post
+    result = await post_service.vote_on_post(post_id, current_user['id'], vote_type)
+    
+    logger.info(f"Vote recorded successfully | Post ID: {post_id} | Vote: {vote_type}")
+    
+    return APIResponse(
+        success=True,
+        message=f"Vote {vote_type} recorded successfully",
+        data=result
+    )
+
 
 
 @router.post("/{post_id}/save", response_model=APIResponse)
@@ -527,45 +456,28 @@ async def save_post(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Save/unsave a post"""
-    try:
-        logger.info(f"Toggling save on post | Post ID: {post_id} | User: {current_user['id']}")
-        
-        # Check if post exists
-        post = await post_service.get_post_by_id(post_id, current_user['id'])
-        if not post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found"
-            )
-        
-        # Toggle save status
-        result = await post_service.save_post(post_id, current_user['id'])
-        
-        action = "saved" if result['is_saved'] else "unsaved"
-        logger.info(f"Post {action} successfully | Post ID: {post_id}")
-        
-        return APIResponse(
-            success=True,
-            message=f"Post {action} successfully",
-            data=result
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'save_post',
-                'post_id': post_id,
-                'user_id': current_user['id']
-            }
-        )
+    logger.info(f"Toggling save on post | Post ID: {post_id} | User: {current_user['id']}")
+    
+    # Check if post exists
+    post = await post_service.get_post_by_id(post_id, current_user['id'])
+    if not post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save/unsave post"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
         )
-
+    
+    # Toggle save status
+    result = await post_service.save_post(post_id, current_user['id'])
+    
+    action = "saved" if result['is_saved'] else "unsaved"
+    logger.info(f"Post {action} successfully | Post ID: {post_id}")
+    
+    return APIResponse(
+        success=True,
+        message=f"Post {action} successfully",
+        data=result
+    )
+    
 
 @router.post("/{post_id}/upload-media", response_model=APIResponse)
 async def upload_media(
@@ -574,47 +486,30 @@ async def upload_media(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Upload media for a post"""
-    try:
-        logger.info(f"Uploading media for post | Post ID: {post_id} | User: {current_user['id']}")
-        
-        # Check if post exists and user owns it
-        post = await post_service.get_post_by_id(post_id, current_user['id'])
-        if not post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found"
-            )
-        
-        if post['user_id'] != current_user['id']:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to upload media for this post"
-            )
-        
-        # For now, return a mock URL - this would be replaced with actual S3 upload
-        mock_url = f"https://example.com/media/{post_id}/{file.filename}"
-        
-        logger.info(f"Media uploaded successfully | Post ID: {post_id} | URL: {mock_url}")
-        
-        return APIResponse(
-            success=True,
-            message="Media uploaded successfully",
-            data={"media_url": mock_url}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'upload_media',
-                'post_id': post_id,
-                'user_id': current_user['id'],
-                'filename': file.filename if file else None
-            }
-        )
+    logger.info(f"Uploading media for post | Post ID: {post_id} | User: {current_user['id']}")
+    
+    # Check if post exists and user owns it
+    post = await post_service.get_post_by_id(post_id, current_user['id'])
+    if not post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to upload media"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
         )
+    
+    if post['user_id'] != current_user['id']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to upload media for this post"
+        )
+    
+    # For now, return a mock URL - this would be replaced with actual S3 upload
+    mock_url = f"https://example.com/media/{post_id}/{file.filename}"
+    
+    logger.info(f"Media uploaded successfully | Post ID: {post_id} | URL: {mock_url}")
+    
+    return APIResponse(
+        success=True,
+        message="Media uploaded successfully",
+        data={"media_url": mock_url}
+    )
+    

@@ -37,7 +37,6 @@ CREATE TABLE users (
     display_name VARCHAR(100),
     bio TEXT,
     avatar_url TEXT,
-    title UUID REFERENCES titles(id) DEFAULT NULL,  -- Foreign key to titles table
     rep_accounts UUID[] DEFAULT NULL, -- Array of representative IDs this user can manage
     is_active BOOLEAN DEFAULT TRUE,
     is_verified BOOLEAN DEFAULT FALSE,
@@ -50,7 +49,6 @@ CREATE TABLE users (
 -- Indexes for users table
 CREATE INDEX idx_users_email ON users (email);
 CREATE INDEX idx_users_username ON users (username);
-CREATE INDEX idx_users_title ON users (title);
 CREATE INDEX idx_users_active ON users (is_active);
 CREATE INDEX idx_users_search ON users USING GIN (search_vector);
 CREATE INDEX idx_users_created_at ON users (created_at DESC);
