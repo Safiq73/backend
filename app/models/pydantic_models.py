@@ -123,6 +123,25 @@ class UserUpdate(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
     bio: Optional[str] = Field(None, max_length=500)
     avatar_url: Optional[str] = Field(None, max_length=500)
+    
+    @validator('username')
+    def validate_username(cls, v):
+        """Validate username format and restrictions"""
+        if v is None:
+            return v
+        if not re.match(r'^[a-zA-Z0-9_]+$', v):
+            raise ValueError('Username can only contain letters, numbers, and underscores')
+        reserved_names = ['admin', 'api', 'www', 'support', 'help', 'system', 'root']
+        if v.lower() in reserved_names:
+            raise ValueError('This username is reserved')
+        return v.lower()
+
+    @validator('display_name')
+    def validate_display_name(cls, v):
+        """Validate display name"""
+        if v and len(v.strip()) == 0:
+            raise ValueError('Display name cannot be empty')
+        return v.strip() if v else None
 
 class UserResponse(UserBase):
     id: UUID
@@ -319,6 +338,30 @@ class PostFilter(BaseModel):
 class PostSort(BaseModel):
     sort_by: str = Field(default="created_at", pattern="^(created_at|updated_at|upvotes|comment_count|priority_score)$")
     order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+# Representative models
+class RepresentativeBase(BaseModel):
+    jurisdiction_id: UUID
+    title_id: UUID
+    
+class RepresentativeResponse(RepresentativeBase, BaseModelWithTimestamps):
+    id: UUID
+    user_id: Optional[UUID] = None
+    jurisdiction_name: str
+    jurisdiction_level: str
+    title_name: str
+    abbreviation: Optional[str] = None
+    level_rank: Optional[int] = None
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class RepresentativeLinkRequest(BaseModel):
+    representative_id: UUID
+
+class UserWithRepresentativeResponse(UserResponse):
+    linked_representative: Optional[RepresentativeResponse] = None
 
 # Enable forward references
 CommentResponse.model_rebuild()

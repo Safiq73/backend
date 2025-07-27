@@ -23,7 +23,7 @@ from app.db.database import startup_db, shutdown_db
 try:
     validate_environment()
     print("✅ Configuration validation completed successfully")
-except Exception as e:
+except (ValueError, KeyError, AttributeError) as e:
     print(f"❌ Configuration validation failed: {e}")
     if not getattr(settings, 'debug', True):
         raise
@@ -38,7 +38,7 @@ try:
     )
     logger = get_logger('app.main')
     logger.info("Logging configuration completed successfully")
-except Exception as e:
+except (ValueError, ImportError, OSError) as e:
     print(f"❌ Logging setup failed: {e}")
     # Fallback to basic logging
     logging.basicConfig(level=logging.INFO)

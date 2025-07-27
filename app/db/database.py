@@ -30,7 +30,7 @@ class DatabaseManager:
             )
             
             logger.info("Database connection pool created successfully")
-        except Exception as e:
+        except (asyncpg.PostgresError, asyncpg.ConnectionDoesNotExistError, OSError) as e:
             logger.error(f"Failed to create database pool: {e}")
             raise
     
@@ -63,7 +63,7 @@ class DatabaseManager:
                 else:
                     logger.info("All required database tables already exist")
                     
-        except Exception as e:
+        except (asyncpg.PostgresError, asyncpg.ConnectionDoesNotExistError) as e:
             logger.error(f"Error checking/creating tables: {e}")
             raise
     
@@ -98,7 +98,7 @@ class DatabaseManager:
             try:
                 await conn.execute(sql_content)
                 logger.info("Triggers file executed successfully")
-            except Exception as e:
+            except asyncpg.PostgresError as e:
                 logger.error(f"Error executing triggers file: {e}")
                 # Skip triggers if they fail - they're not critical for basic functionality
                 logger.warning("Skipping triggers - application will work without them")
@@ -110,7 +110,7 @@ class DatabaseManager:
                 try:
                     await conn.execute(statement)
                     logger.debug(f"Statement {i} executed successfully")
-                except Exception as e:
+                except asyncpg.PostgresError as e:
                     logger.error(f"Error executing statement {i}: {e}")
                     logger.error(f"Statement: {statement[:200]}...")
                     # Skip extensions that might already exist or other non-critical errors
@@ -182,8 +182,8 @@ async def execute_query(
     except asyncpg.PostgresError as e:
         logger.error(f"PostgreSQL error: {e}")
         raise
-    except Exception as e:
-        logger.error(f"Database error: {e}")
+    except (asyncio.TimeoutError, ConnectionError) as e:
+        logger.error(f"Database connection error: {e}")
         raise
 
 async def execute_transaction(
