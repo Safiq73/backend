@@ -385,19 +385,18 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             post_id = uuid4()
             query = """
-                INSERT INTO posts (id, user_id, title, content, post_type, area, category, location, latitude, longitude, tags, media_urls)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                RETURNING id, user_id, title, content, post_type, area, category, location, latitude, longitude, tags, media_urls, created_at, updated_at
+                INSERT INTO posts (id, user_id, assignee, title, content, post_type, location, latitude, longitude, tags, media_urls)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                RETURNING id, user_id, assignee, title, content, post_type, location, latitude, longitude, tags, media_urls, created_at, updated_at
             """
             row = await conn.fetchrow(
                 query,
                 post_id,
                 user_id,
+                post_data.get('assignee'),
                 post_data.get('title'),
                 post_data.get('content'),
                 post_data.get('post_type', 'discussion'),
-                post_data.get('area'),
-                post_data.get('category'),
                 post_data.get('location'),
                 post_data.get('latitude'),
                 post_data.get('longitude'),
@@ -487,7 +486,7 @@ class DatabaseService:
         async with db_manager.get_connection() as conn:
             # Build the base query
             query = """
-                SELECT p.id, p.title, p.content, p.post_type, p.area, p.category, p.status,
+                SELECT p.id, p.title, p.content, p.post_type, p.status,
                        p.media_urls, p.location, p.tags, p.upvotes, p.downvotes, p.comment_count,
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
@@ -513,7 +512,7 @@ class DatabaseService:
                 param_num += 1
             
             if location:
-                conditions.append(f"p.area ILIKE ${param_num}")
+                conditions.append(f"p.location ILIKE ${param_num}")
                 values.append(f"%{location}%")
                 param_num += 1
             
@@ -622,7 +621,7 @@ class DatabaseService:
                 UPDATE posts 
                 SET {', '.join(set_clauses)}
                 WHERE id = ${param_num}
-                RETURNING id, user_id, title, content, post_type, area, category, location, tags, media_urls, created_at, updated_at
+                RETURNING id, user_id, title, content, post_type, location, tags, media_urls, created_at, updated_at
             """
             
             row = await conn.fetchrow(query, *values)
@@ -951,3 +950,53 @@ class DatabaseService:
                 posts.append(post)
             
             return posts
+
+    async def get_representatives_by_location(self, latitude: float, longitude: float) -> List[Dict[str, Any]]:
+        """Get representatives and judiciary for a specific location based on coordinates"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT DISTINCT 
+                    r.id as representative_id,
+                    t.id as title_id,
+                    t.title_name,
+                    t.abbreviation,
+                    t.level_rank,
+                    t.description as title_description,
+                    t.title_type,
+                    j.id as jurisdiction_id,
+                    j.name as jurisdiction_name,
+                    j.level_name as jurisdiction_level,
+                    j.level_rank as jurisdiction_rank
+                FROM jurisdictions j
+                JOIN representatives r ON r.jurisdiction_id = j.id
+                JOIN titles t ON r.title_id = t.id
+                WHERE ST_Contains(j.boundary, ST_SetSRID(ST_Point($1, $2), 4326))
+                ORDER BY t.level_rank DESC, j.level_rank DESC
+            """
+            
+            rows = await conn.fetch(query, longitude, latitude)
+            
+            representatives = []
+            for row in rows:
+                rep_data = dict(row)
+                representative = {
+                    'representative_id': str(rep_data['representative_id']),
+                    'title': {
+                        'id': str(rep_data['title_id']),
+                        'title_name': rep_data['title_name'],
+                        'abbreviation': rep_data['abbreviation'],
+                        'level_rank': rep_data['level_rank'],
+                        'description': rep_data['title_description'],
+                        'title_type': rep_data['title_type']
+                    },
+                    'jurisdiction': {
+                        'id': str(rep_data['jurisdiction_id']),
+                        'name': rep_data['jurisdiction_name'],
+                        'level_name': rep_data['jurisdiction_level'],
+                        'level_rank': rep_data['jurisdiction_rank']
+                    },
+                    'display_name': f"{rep_data['abbreviation']} - {rep_data['jurisdiction_name']}" if rep_data['abbreviation'] else f"{rep_data['title_name']} - {rep_data['jurisdiction_name']}"
+                }
+                representatives.append(representative)
+            
+            return representatives

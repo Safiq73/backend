@@ -168,8 +168,6 @@ class PostBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     content: str = Field(..., min_length=1, max_length=10000)
     post_type: PostType = PostType.DISCUSSION
-    area: Optional[str] = Field(None, max_length=100)
-    category: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=255)
     tags: Optional[List[str]] = Field(default_factory=list)
     media_urls: Optional[List[str]] = Field(default_factory=list)
@@ -182,8 +180,6 @@ class PostUpdate(BaseModel):
     content: Optional[str] = Field(None, min_length=1, max_length=10000)
     post_type: Optional[PostType] = None
     status: Optional[PostStatus] = None
-    area: Optional[str] = Field(None, max_length=100)
-    category: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=255)
     tags: Optional[List[str]] = None
     media_urls: Optional[List[str]] = None
@@ -330,8 +326,6 @@ class PostStats(BaseModel):
 class PostFilter(BaseModel):
     post_type: Optional[PostType] = None
     status: Optional[PostStatus] = None
-    area: Optional[str] = None
-    category: Optional[str] = None
     user_id: Optional[UUID] = None
     tags: Optional[List[str]] = None
     search_query: Optional[str] = None

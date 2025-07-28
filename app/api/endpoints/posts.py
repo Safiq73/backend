@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
 from typing import Optional, List, Dict, Any
-from app.schemas import PostCreate, PostUpdate, PostResponse, PaginatedResponse, APIResponse
+from app.schemas import PostCreate, PostUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
 from app.services.post_service import PostService
 from app.services.mixed_content_service import mixed_content_service
+from app.services.db_service import DatabaseService
 from app.services.auth_service import get_current_user
 from app.core.config import settings
 from app.core.logging_config import get_logger, log_error_with_context
 
 router = APIRouter()
 post_service = PostService()
+db_service = DatabaseService()
 logger = get_logger('app.posts')
 
 
@@ -17,9 +19,7 @@ async def get_posts(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     post_type: Optional[str] = Query(None),
-    area: Optional[str] = Query(None),
     post_status: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
@@ -31,7 +31,7 @@ async def get_posts(
         
         logger.info(
             f"Fetching mixed content | Page: {page}, Size: {size} | "
-            f"Filters: type={post_type}, area={area}, status={post_status}, category={category} | "
+            f"Filters: type={post_type}, status={post_status} | "
             f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
         )
         
@@ -41,8 +41,6 @@ async def get_posts(
             size=size,
             user_id=user_id,
             post_type=post_type,
-            area=area,
-            category=category,
             sort_by=sort_by,
             order=order
         )
@@ -60,9 +58,7 @@ async def get_posts(
                 'size': size,
                 'filters': {
                     'post_type': post_type,
-                    'area': area,
-                    'status': post_status,
-                    'category': category
+                    'status': post_status
                 }
             }
         )
@@ -77,9 +73,7 @@ async def get_posts_only(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     post_type: Optional[str] = Query(None),
-    area: Optional[str] = Query(None),
     post_status: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
@@ -91,7 +85,7 @@ async def get_posts_only(
         
         logger.info(
             f"Fetching posts only | Page: {page}, Size: {size} | "
-            f"Filters: type={post_type}, area={area}, status={post_status}, category={category} | "
+            f"Filters: type={post_type}, status={post_status} | "
             f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
         )
         
@@ -99,7 +93,6 @@ async def get_posts_only(
             skip=(page - 1) * size,
             limit=size,
             post_type=post_type,
-            location=area,
             current_user_id=user_id
         )
         
@@ -129,9 +122,7 @@ async def get_posts_only(
                 'size': size,
                 'filters': {
                     'post_type': post_type,
-                    'area': area,
-                    'status': post_status,
-                    'category': category
+                    'status': post_status
                 }
             }
         )
@@ -217,6 +208,62 @@ async def get_news_only(
         )
 
 
+@router.get("/representatives/by-location", response_model=APIResponse)
+async def get_representatives_by_location(
+    latitude: float = Query(..., ge=6.5, le=37.5, description="Latitude within India bounds"),
+    longitude: float = Query(..., ge=68.0, le=97.5, description="Longitude within India bounds"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """Get representatives and judiciary for a specific location"""
+    try:
+        user_id = current_user["id"] if current_user else None
+        
+        logger.info(
+            f"Fetching representatives by location | Lat: {latitude}, Lng: {longitude} | "
+            f"User: {user_id or 'anonymous'}"
+        )
+        
+        representatives = await db_service.get_representatives_by_location(latitude, longitude)
+        
+        # Format for frontend display
+        assignee_options = []
+        for rep in representatives:
+            option = AssigneeOption(
+                value=rep['representative_id'],
+                label=rep['display_name'],
+                title=TitleInfo(**rep['title']),
+                jurisdiction=JurisdictionInfo(**rep['jurisdiction'])
+            )
+            assignee_options.append(option)
+        
+        logger.info(f"Found {len(assignee_options)} representative options for location")
+        
+        return APIResponse(
+            success=True,
+            message=f"Found {len(assignee_options)} representatives for location",
+            data={
+                "assignee_options": [option.dict() for option in assignee_options],
+                "location": {"latitude": latitude, "longitude": longitude},
+                "total": len(assignee_options)
+            }
+        )
+        
+    except Exception as e:
+        log_error_with_context(
+            logger, e,
+            {
+                'operation': 'get_representatives_by_location',
+                'latitude': latitude,
+                'longitude': longitude,
+                'user_id': user_id
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch representatives for location"
+        )
+
+
 @router.post("", response_model=APIResponse)
 async def create_post(
     post_data: PostCreate,
@@ -231,13 +278,12 @@ async def create_post(
             'title': post_data.title,
             'content': post_data.content,
             'post_type': post_data.post_type,
-            'area': post_data.area,
-            'category': post_data.category,
+            'assignee': post_data.assignee,
             'location': post_data.location,
             'latitude': post_data.latitude,
             'longitude': post_data.longitude,
             'media_urls': post_data.media_urls or [],
-            'tags': post_data.tags or [],  # Add role tags
+            'tags': post_data.tags or [],
             'user_id': current_user['id']
         }
         

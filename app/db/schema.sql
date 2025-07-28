@@ -58,6 +58,7 @@ CREATE INDEX idx_users_rep_accounts ON users USING GIN (rep_accounts);
 CREATE TABLE posts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    assignee UUID REFERENCES representatives(id) ON DELETE SET NULL, -- Representative assigned to handle this post
     title VARCHAR(500) NOT NULL,
     content TEXT NOT NULL,
     post_type post_type NOT NULL DEFAULT 'discussion',
@@ -91,6 +92,7 @@ CREATE TABLE posts (
 
 -- Indexes for posts table
 CREATE INDEX idx_posts_user_id ON posts (user_id);
+CREATE INDEX idx_posts_assignee ON posts (assignee);
 CREATE INDEX idx_posts_status ON posts (status);
 CREATE INDEX idx_posts_type ON posts (post_type);
 CREATE INDEX idx_posts_area ON posts (area);

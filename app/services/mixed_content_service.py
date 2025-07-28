@@ -23,8 +23,6 @@ class MixedContentService:
         size: int,
         user_id: Optional[str] = None,
         post_type: Optional[str] = None,
-        area: Optional[str] = None,
-        category: Optional[str] = None,
         sort_by: str = "timestamp",
         order: str = "desc"
     ) -> PaginatedResponse:
@@ -36,8 +34,6 @@ class MixedContentService:
             size: Items per page
             user_id: Current user ID for personalization
             post_type: Filter by post type
-            area: Filter by area/location
-            category: Filter by category
             sort_by: Sort field
             order: Sort order
             
@@ -59,7 +55,7 @@ class MixedContentService:
         # Check if we should skip DB query for posts
         posts_skip = (page - 1) * max_posts
         should_fetch_posts = await self._should_fetch_posts(
-            posts_skip, max_posts, post_type, area, user_id
+            posts_skip, max_posts, post_type, user_id
         )
         
         # Fetch posts from database
@@ -70,7 +66,6 @@ class MixedContentService:
                     skip=posts_skip,
                     limit=max_posts,
                     post_type=post_type,
-                    location=area,
                     current_user_id=user_id
                 )
                 logger.info(f"Fetched {len(posts)} posts from database")
@@ -165,7 +160,6 @@ class MixedContentService:
         skip: int, 
         limit: int, 
         post_type: Optional[str], 
-        area: Optional[str], 
         user_id: Optional[str]
     ) -> bool:
         """
@@ -181,7 +175,6 @@ class MixedContentService:
                 skip=skip,
                 limit=1,
                 post_type=post_type,
-                location=area,
                 current_user_id=user_id
             )
             return len(test_posts) > 0

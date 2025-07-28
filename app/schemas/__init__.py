@@ -131,8 +131,7 @@ class PostBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     content: str = Field(..., min_length=1, max_length=10000)
     post_type: PostType = PostType.DISCUSSION
-    area: Optional[str] = Field(None, max_length=100)
-    category: Optional[str] = Field(None, max_length=100)
+    assignee: str = Field(..., description="UUID of representative assigned to handle this post")
     location: Optional[str] = Field(None, max_length=255)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -155,16 +154,6 @@ class PostBase(BaseModel):
         if '<script' in v.lower() or 'javascript:' in v.lower():
             raise ValueError('Content contains unsafe elements')
         return v.strip()
-
-    @validator('area')
-    def validate_area(cls, v):
-        """Validate area"""
-        return v.strip() if v else None
-
-    @validator('category')
-    def validate_category(cls, v):
-        """Validate category"""
-        return v.strip() if v else None
 
     @validator('media_urls')
     def validate_media_urls(cls, v):
@@ -193,6 +182,18 @@ class PostBase(BaseModel):
                 raise ValueError('Longitude must be within India boundaries (68° to 97.5° E)')
         return v
 
+    @validator('assignee')
+    def validate_assignee(cls, v):
+        """Validate assignee is a valid UUID"""
+        if not v:
+            raise ValueError('Assignee is required')
+        import uuid
+        try:
+            uuid.UUID(v)
+        except ValueError:
+            raise ValueError('Assignee must be a valid UUID')
+        return v
+
 
 class PostCreate(PostBase):
     pass
@@ -203,8 +204,7 @@ class PostUpdate(BaseModel):
     content: Optional[str] = Field(None, min_length=1, max_length=10000)
     post_type: Optional[PostType] = None
     status: Optional[PostStatus] = None
-    area: Optional[str] = Field(None, max_length=100)
-    category: Optional[str] = Field(None, max_length=100)
+    assignee: Optional[str] = Field(None, description="UUID of representative assigned to handle this post")
     location: Optional[str] = Field(None, max_length=255)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -372,8 +372,6 @@ class APIResponse(BaseModel):
 class PostFilter(BaseModel):
     post_type: Optional[PostType] = None
     status: Optional[PostStatus] = None
-    area: Optional[str] = None
-    category: Optional[str] = None
     user_id: Optional[str] = None
     tags: Optional[List[str]] = None
     search_query: Optional[str] = None
@@ -382,6 +380,36 @@ class PostFilter(BaseModel):
 class PostSort(BaseModel):
     sort_by: str = Field(default="created_at", pattern="^(created_at|updated_at|upvotes|comment_count|priority_score)$")
     order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+
+# Representative Assignment Schemas
+class TitleInfo(BaseModel):
+    id: str
+    title_name: str
+    abbreviation: Optional[str] = None
+    level_rank: int
+    description: Optional[str] = None
+    title_type: Optional[str] = None
+
+
+class JurisdictionInfo(BaseModel):
+    id: str
+    name: str
+    level_name: str
+    level_rank: int
+
+
+class AssigneeOption(BaseModel):
+    value: str  # representative_id
+    label: str  # display name
+    title: TitleInfo
+    jurisdiction: JurisdictionInfo
+
+
+class RepresentativesByLocationResponse(BaseModel):
+    assignee_options: List[AssigneeOption]
+    location: Dict[str, float]
+    total: int
 
 
 # Enable forward references
