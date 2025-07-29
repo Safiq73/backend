@@ -210,35 +210,48 @@ class AuthService:
 # Global dependency function
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Get current authenticated user from JWT token"""
     if not credentials:
-        return None
-    
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
     try:
         # Verify token format
-
         payload = verify_token(credentials.credentials)
 
         if not payload:
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
         
         # Check if token is blacklisted
         auth_service = AuthService()
         if await auth_service.is_token_blacklisted(credentials.credentials):
             logger.warning("Blacklisted token used")
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked"
+            )
         
         user_id = payload.get("sub")
         if not user_id:
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload"
+            )
         
         # Convert string to UUID
         try:
             user_uuid = UUID(user_id)
         except ValueError:
             logger.debug(f"Invalid user ID format: {user_id}")
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user ID"
+            )
 
         # Get user from database
         user = await auth_service.get_user_by_id(user_uuid)
@@ -247,21 +260,16 @@ async def get_current_user(
             logger.debug(f"Current user retrieved | User ID: {user['id']}")
             return user
 
-        return None
-            
-    except Exception as e:
-        logger.debug(f"Get current user error: {e}")
-        return None
-
-
-# Optional dependency for protected routes
-async def get_current_user_required(
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Get current user with required authentication"""
-    if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            detail="User not found or inactive"
         )
-    return current_user
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"Get current user error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed"
+        )

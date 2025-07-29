@@ -22,24 +22,6 @@ class UserService:
         if not user_data:
             return user_data
         
-        # Extract title information if present
-        title_info = None
-        if user_data.get('role_id'):  # Note: DB column still called 'role_id' for now
-            title_info = {
-                'id': user_data.get('role_id'),
-                'title_name': user_data.get('title_name'),  # Updated: DB column now called 'title_name'
-                'abbreviation': user_data.get('abbreviation'),
-                'level_rank': user_data.get('level_rank'),
-                'title_type': user_data.get('title_type'),  # Updated: DB column now called 'title_type'
-                'description': user_data.get('role_description'),
-                'level': user_data.get('level'),
-                'is_elected': user_data.get('is_elected'),
-                'term_length': user_data.get('term_length'),
-                'status': user_data.get('role_status'),
-                'created_at': user_data.get('created_at'),
-                'updated_at': user_data.get('updated_at')
-            }
-        
         # Create clean user data
         clean_user_data = {
             'id': user_data.get('id'),
@@ -54,7 +36,6 @@ class UserService:
             'is_verified': user_data.get('is_verified'),
             'created_at': user_data.get('created_at'),
             'updated_at': user_data.get('updated_at'),
-            'title_info': title_info
         }
         
         return clean_user_data

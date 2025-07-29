@@ -74,26 +74,6 @@ def create_application() -> FastAPI:
     else:
         logger.info("Security headers middleware disabled for local development")
 
-    # Conditionally add rate limiting middleware (disabled for local development)
-    if getattr(settings, 'enable_rate_limiting', True) and settings.rate_limit_per_minute > 0:
-        app.add_middleware(
-            RateLimitMiddleware,
-            calls=settings.rate_limit_per_minute,
-            period=60
-        )
-        logger.info("Rate limiting middleware enabled")
-    else:
-        logger.info("Rate limiting middleware disabled for local development")
-
-    # Add logging middleware
-    if settings.enable_request_logging or settings.enable_performance_logging:
-        app.add_middleware(
-            LoggingMiddleware,
-            enable_request_logging=settings.enable_request_logging,
-            enable_performance_logging=settings.enable_performance_logging
-        )
-        logger.info("Logging middleware enabled")
-
     # Set up CORS - Fully open for local development
     cors_origins = getattr(settings, 'allowed_origins', ["*"])
     app.add_middleware(
@@ -113,7 +93,7 @@ def create_application() -> FastAPI:
     # Register exception handlers
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(Exception, general_exception_handler)
+    # app.add_exception_handler(Exception, general_exception_handler)
     logger.info("Exception handlers registered")
     
 

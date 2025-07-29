@@ -17,22 +17,19 @@ class PostService:
     
     async def create_post(self, post_data: Dict[str, Any], author_id: UUID) -> Dict[str, Any]:
         """Create a new post"""
-        try:
-            # Create the post in database
-            post = await self.db_service.create_post(post_data, author_id)
-            
-            # Get full post with author info
-            full_post = await self.db_service.get_post_by_id(post['id'])
-            
-            # Format response with engagement data
-            response = await self._format_post_response(full_post, author_id)
-            
-            logger.info(f"Created post {post['id']} by user {author_id}")
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error creating post: {e}")
-            raise HTTPException(status_code=500, detail="Failed to create post")
+        # Create the post in database
+
+        post = await self.db_service.create_post(post_data, author_id)
+        
+        # Get full post with author info
+        full_post = await self.db_service.get_post_by_id(post['id'])
+        
+        # Format response with engagement data
+        response = await self._format_post_response(full_post, author_id)
+        
+        logger.info(f"Created post {post['id']} by user {author_id}")
+        return response
+        
     
     async def get_posts(
         self,
@@ -81,16 +78,17 @@ class PostService:
             logger.error(f"Error retrieving post {post_id}: {e}")
             raise HTTPException(status_code=500, detail="Failed to retrieve post")
     
-    async def update_post(self, post_id: UUID, post_data: Dict[str, Any], current_user_id: UUID) -> Dict[str, Any]:
+    async def update_post(self, post_id: UUID, post_data: Dict[str, Any], current_user_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Update a post"""
         try:
-            # Get the post first to check ownership
-            post = await self.db_service.get_post_by_id(post_id)
-            if not post:
-                raise HTTPException(status_code=404, detail="Post not found")
-            
-            if UUID(post['author']['id']) != current_user_id:
-                raise HTTPException(status_code=403, detail="Not authorized to update this post")
+            # Get the post first to check ownership if current_user_id is provided
+            if current_user_id is not None:
+                post = await self.db_service.get_post_by_id(post_id)
+                if not post:
+                    raise HTTPException(status_code=404, detail="Post not found")
+                
+                if UUID(post['author']['id']) != current_user_id:
+                    raise HTTPException(status_code=403, detail="Not authorized to update this post")
             
             # Update the post
             updated_post = await self.db_service.update_post(post_id, post_data)
@@ -99,7 +97,7 @@ class PostService:
             
             response = await self._format_post_response(updated_post, current_user_id)
             
-            logger.info(f"Updated post {post_id} by user {current_user_id}")
+            logger.info(f"Updated post {post_id} by user {current_user_id or 'system'}")
             return response
             
         except HTTPException:
@@ -224,50 +222,44 @@ class PostService:
     
     async def _format_post_response(self, post: Dict[str, Any], current_user_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Convert database post to API response format"""
-        try:
-            # Handle UUID - post['id'] is already a UUID object from asyncpg
-            post_id = post['id'] if isinstance(post['id'], UUID) else UUID(post['id'])
+        # Handle UUID - post['id'] is already a UUID object from asyncpg
+        post_id = post['id'] if isinstance(post['id'], UUID) else UUID(post['id'])
+        
+        # Get vote counts
+        vote_counts = await self.db_service.get_post_vote_counts(post_id)
+        
+        # Get user's vote status if logged in
+        is_upvoted = False
+        is_downvoted = False
+        is_saved = False
+        
+        if current_user_id:
+            user_vote = await self.db_service.get_user_vote_on_post(post_id, current_user_id)
+            if user_vote:
+                is_upvoted = user_vote['vote_type'] == 'upvote'
+                is_downvoted = user_vote['vote_type'] == 'downvote'
             
-            # Get vote counts
-            vote_counts = await self.db_service.get_post_vote_counts(post_id)
-            
-            # Get user's vote status if logged in
-            is_upvoted = False
-            is_downvoted = False
-            is_saved = False
-            
-            if current_user_id:
-                user_vote = await self.db_service.get_user_vote_on_post(post_id, current_user_id)
-                if user_vote:
-                    is_upvoted = user_vote['vote_type'] == 'upvote'
-                    is_downvoted = user_vote['vote_type'] == 'downvote'
-                
-                is_saved = await self.db_service.is_post_saved(post_id, current_user_id)
-            
-            # Get comments count
-            comments = await self.db_service.get_comments_by_post(post_id)
-            comment_count = len(comments)
-            
-            return {
-                "id": post['id'],
-                "title": post['title'],
-                "content": post['content'],
-                "post_type": post['post_type'],
-                "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
-                "location": post.get('location'),
-                "tags": post.get('tags', []),
-                "author": post['author'],
-                "created_at": post['created_at'],
-                "updated_at": post['updated_at'],
-                "upvotes": vote_counts["upvotes"],
-                "downvotes": vote_counts["downvotes"],
-                "comment_count": comment_count,
-                "is_upvoted": is_upvoted,
-                "is_downvoted": is_downvoted,
-                "is_saved": is_saved
-            }
-            
-        except Exception as e:
-            import pdb; pdb.set_trace()
-            logger.error(f"Error formatting post response for post {post.get('id', 'unknown')}: {e}")
-            raise
+            is_saved = await self.db_service.is_post_saved(post_id, current_user_id)
+        
+        # Get comments count
+        comments = await self.db_service.get_comments_by_post(post_id)
+        comment_count = len(comments)
+        
+        return {
+            "id": post['id'],
+            "title": post['title'],
+            "content": post['content'],
+            "post_type": post['post_type'],
+            "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
+            "location": post.get('location'),
+            "author": post['author'],
+            "created_at": post['created_at'],
+            "updated_at": post['updated_at'],
+            "upvotes": vote_counts["upvotes"],
+            "downvotes": vote_counts["downvotes"],
+            "comment_count": comment_count,
+            "is_upvoted": is_upvoted,
+            "is_downvoted": is_downvoted,
+            "is_saved": is_saved
+        }
+        

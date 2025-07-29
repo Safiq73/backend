@@ -149,7 +149,6 @@ class UserResponse(UserBase):
     is_verified: bool = False
     created_at: datetime
     updated_at: datetime
-    title_info: Optional[TitleResponse] = None  # Populated title information
 
     class Config:
         from_attributes = True
@@ -160,7 +159,6 @@ class AuthorInfo(BaseModel):
     username: str
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
-    title_info: Optional[TitleResponse] = None  # Populated title information
     rep_accounts: List['RepresentativeWithDetails'] = []  # Representative account details
 
 # Post models - aligned with corrected schema

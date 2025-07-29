@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # File Upload & Media
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     allowed_file_types: List[str] = ["image/jpeg", "image/png", "image/gif", "video/mp4", "video/webm"]
+    max_files_per_post: int = 10  # Maximum files per post
     
     # External Services (AWS S3 for media storage)
     aws_access_key_id: Optional[str] = None
@@ -54,6 +55,8 @@ class Settings(BaseSettings):
     aws_s3_bucket: Optional[str] = None
     aws_region: str = "us-east-1"
     aws_s3_endpoint_url: Optional[str] = None  # For local development with MinIO
+    s3_max_image_size: int = 10 * 1024 * 1024  # 10MB for images
+    s3_max_video_size: int = 100 * 1024 * 1024  # 100MB for videos
     
     # Cloudinary (for file uploads)
     cloudinary_cloud_name: Optional[str] = None

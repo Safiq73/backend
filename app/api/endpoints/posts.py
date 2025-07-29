@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, UploadFile, File
 from typing import Optional, List, Dict, Any
 from app.schemas import PostCreate, PostUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
 from app.services.post_service import PostService
 from app.services.mixed_content_service import mixed_content_service
 from app.services.db_service import DatabaseService
 from app.services.auth_service import get_current_user
+from app.services.s3_upload_service import s3_upload_service
 from app.core.config import settings
 from app.core.logging_config import get_logger, log_error_with_context
 
@@ -266,51 +267,72 @@ async def get_representatives_by_location(
 
 @router.post("", response_model=APIResponse)
 async def create_post(
-    post_data: PostCreate,
+    title: str = Form(..., min_length=1, max_length=500),
+    content: str = Form(..., min_length=1, max_length=10000),
+    post_type: str = Form(..., regex="^(issue|announcement|news|accomplishment|discussion)$"),
+    assignee: str = Form(..., description="UUID of representative assigned to handle this post"),
+    location: Optional[str] = Form(None),
+    latitude: Optional[float] = Form(None, ge=-90, le=90),
+    longitude: Optional[float] = Form(None, ge=-180, le=180),
+    files: List[UploadFile] = File([], description="Media files (images/videos) to upload"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Create a new post"""
-    try:
-        logger.info(f"Creating post | User: {current_user['id']} | Title: {post_data.title}")
-        
-        # Create post data dict
-        post_dict = {
-            'title': post_data.title,
-            'content': post_data.content,
-            'post_type': post_data.post_type,
-            'assignee': post_data.assignee,
-            'location': post_data.location,
-            'latitude': post_data.latitude,
-            'longitude': post_data.longitude,
-            'media_urls': post_data.media_urls or [],
-            'tags': post_data.tags or [],
-            'user_id': current_user['id']
-        }
-        
-        post = await post_service.create_post(post_dict, current_user['id'])
-        
-        logger.info(f"Post created successfully | Post ID: {post['id']} | User: {current_user['id']}")
-        
-        return APIResponse(
-            success=True,
-            message="Post created successfully",
-            data={"post": post}
-        )
-        
-    except Exception as e:
-        log_error_with_context(
-            logger, e,
-            {
-                'operation': 'create_post',
-                'user_id': current_user['id'],
-                'title': post_data.title
-            }
-        )
+    
+    # Validate file count
+    file_count = len(files) if files else 0
+    if file_count > settings.max_files_per_post:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create post"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many files. Maximum allowed: {settings.max_files_per_post}"
         )
-
+    
+    # Upload files to S3 if provided
+    media_urls = []
+    if files and any(file.filename for file in files):  # Check for actual files
+        # Filter out empty files
+        valid_files = [f for f in files if f.filename and f.size > 0]
+        
+        if valid_files:
+            logger.info(f"Uploading {len(valid_files)} files to S3")
+            
+            # Check if S3 service is available
+            if not s3_upload_service.is_available():
+                logger.warning("S3 service not available, files will not be uploaded")
+                # Continue with post creation without files
+            else:
+                # Upload files to S3
+                media_urls = await s3_upload_service.upload_multiple_files(
+                    files=valid_files,
+                    post_id=None,  # We'll update this after post creation if needed
+                    use_presigned_url=False  # Use direct URLs for now
+                )
+                logger.info(f"Successfully uploaded {len(media_urls)} files")
+    
+    # Create post data dict
+    post_dict = {
+        'title': title.strip(),
+        'content': content.strip(),
+        'post_type': post_type,
+        'assignee': assignee,
+        'location': location,
+        'latitude': latitude,
+        'longitude': longitude,
+        'media_urls': media_urls,
+        'user_id': current_user['id']
+    }
+    
+    post = await post_service.create_post(post_dict, current_user['id'])
+    import pdb; pdb.set_trace()  # Debugging breakpoint
+    return APIResponse(
+        success=True,
+        message="Post created successfully",
+        data={
+            "post": post,
+            "uploaded_files": len(media_urls),
+            "media_urls": media_urls
+        }
+    )
+        
 
 @router.get("/nearby", response_model=APIResponse)
 async def get_nearby_posts(
@@ -371,6 +393,203 @@ async def get_nearby_posts(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch nearby posts"
+        )
+
+
+@router.post("/{post_id}/upload", response_model=APIResponse)
+async def upload_files_to_post(
+    post_id: str,
+    files: List[UploadFile] = File(..., description="Media files to upload"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Upload additional files to an existing post"""
+    try:
+        logger.info(f"Uploading files to post | Post ID: {post_id} | User: {current_user['id']} | Files: {len(files)}")
+        
+        # Check if post exists and user owns it
+        existing_post = await post_service.get_post_by_id(post_id, current_user['id'])
+        if not existing_post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found"
+            )
+        
+        if existing_post['user_id'] != current_user['id']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to upload files to this post"
+            )
+        
+        # Check current file count
+        current_media_urls = existing_post.get('media_urls', [])
+        total_files_after_upload = len(current_media_urls) + len(files)
+        
+        if total_files_after_upload > settings.max_files_per_post:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Total files would exceed limit. Current: {len(current_media_urls)}, Uploading: {len(files)}, Max: {settings.max_files_per_post}"
+            )
+        
+        # Validate files
+        valid_files = [f for f in files if f.filename and f.size > 0]
+        if not valid_files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid files provided"
+            )
+        
+        # Check if S3 service is available
+        if not s3_upload_service.is_available():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="File upload service is currently unavailable"
+            )
+        
+        # Upload files to S3
+        new_media_urls = await s3_upload_service.upload_multiple_files(
+            files=valid_files,
+            post_id=post_id,
+            use_presigned_url=False
+        )
+        
+        # Update post with new media URLs
+        updated_media_urls = current_media_urls + new_media_urls
+        update_data = {"media_urls": updated_media_urls}
+        
+        updated_post = await post_service.update_post(post_id, update_data)
+        
+        logger.info(f"Files uploaded successfully | Post ID: {post_id} | New files: {len(new_media_urls)}")
+        
+        return APIResponse(
+            success=True,
+            message=f"Successfully uploaded {len(new_media_urls)} files",
+            data={
+                "post": updated_post,
+                "new_media_urls": new_media_urls,
+                "total_media_count": len(updated_media_urls)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error_with_context(
+            logger, e,
+            {
+                'operation': 'upload_files_to_post',
+                'post_id': post_id,
+                'user_id': current_user['id'],
+                'file_count': len(files)
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload files"
+        )
+
+
+@router.get("/upload-info", response_model=APIResponse)
+async def get_upload_info():
+    """Get file upload configuration and limits"""
+    try:
+        s3_available = s3_upload_service.is_available()
+        
+        return APIResponse(
+            success=True,
+            message="Upload configuration retrieved",
+            data={
+                "s3_available": s3_available,
+                "max_files_per_post": settings.max_files_per_post,
+                "max_file_size": settings.max_file_size,
+                "max_image_size": settings.s3_max_image_size,
+                "max_video_size": settings.s3_max_video_size,
+                "allowed_file_types": settings.allowed_file_types,
+                "allowed_image_types": s3_upload_service.ALLOWED_IMAGE_TYPES,
+                "allowed_video_types": s3_upload_service.ALLOWED_VIDEO_TYPES
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get upload info: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve upload information"
+        )
+
+
+@router.delete("/{post_id}/media", response_model=APIResponse)
+async def delete_post_media(
+    post_id: str,
+    media_url: str = Query(..., description="URL of the media file to delete"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete a specific media file from a post"""
+    try:
+        logger.info(f"Deleting media from post | Post ID: {post_id} | Media URL: {media_url} | User: {current_user['id']}")
+        
+        # Check if post exists and user owns it
+        existing_post = await post_service.get_post_by_id(post_id, current_user['id'])
+        if not existing_post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found"
+            )
+        
+        if existing_post['user_id'] != current_user['id']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to delete media from this post"
+            )
+        
+        # Check if media URL exists in post
+        current_media_urls = existing_post.get('media_urls', [])
+        if media_url not in current_media_urls:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Media file not found in this post"
+            )
+        
+        # Remove URL from post
+        updated_media_urls = [url for url in current_media_urls if url != media_url]
+        update_data = {"media_urls": updated_media_urls}
+        
+        updated_post = await post_service.update_post(post_id, update_data)
+        
+        # Attempt to delete from S3 (optional - don't fail if this fails)
+        if s3_upload_service.is_available():
+            try:
+                await s3_upload_service.delete_file(media_url)
+                logger.info(f"Media file deleted from S3: {media_url}")
+            except Exception as delete_error:
+                logger.warning(f"Failed to delete file from S3: {delete_error}")
+        
+        logger.info(f"Media deleted from post | Post ID: {post_id} | Remaining files: {len(updated_media_urls)}")
+        
+        return APIResponse(
+            success=True,
+            message="Media file deleted successfully",
+            data={
+                "post": updated_post,
+                "deleted_media_url": media_url,
+                "remaining_media_count": len(updated_media_urls)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error_with_context(
+            logger, e,
+            {
+                'operation': 'delete_post_media',
+                'post_id': post_id,
+                'media_url': media_url,
+                'user_id': current_user['id']
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete media file"
         )
 
 
@@ -522,40 +741,5 @@ async def save_post(
         success=True,
         message=f"Post {action} successfully",
         data=result
-    )
-    
-
-@router.post("/{post_id}/upload-media", response_model=APIResponse)
-async def upload_media(
-    post_id: str,
-    file: UploadFile = File(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Upload media for a post"""
-    logger.info(f"Uploading media for post | Post ID: {post_id} | User: {current_user['id']}")
-    
-    # Check if post exists and user owns it
-    post = await post_service.get_post_by_id(post_id, current_user['id'])
-    if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found"
-        )
-    
-    if post['user_id'] != current_user['id']:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to upload media for this post"
-        )
-    
-    # For now, return a mock URL - this would be replaced with actual S3 upload
-    mock_url = f"https://example.com/media/{post_id}/{file.filename}"
-    
-    logger.info(f"Media uploaded successfully | Post ID: {post_id} | URL: {mock_url}")
-    
-    return APIResponse(
-        success=True,
-        message="Media uploaded successfully",
-        data={"media_url": mock_url}
     )
     
