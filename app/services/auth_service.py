@@ -8,6 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import verify_password, create_access_token, create_refresh_token, verify_token
 from app.services.db_service import DatabaseService
 from app.core.logging_config import get_logger, log_error_with_context
+from app.core.config import settings
 
 security = HTTPBearer(auto_error=False)
 logger = get_logger('app.auth')
@@ -51,9 +52,6 @@ class AuthService:
             logger.info(f"Creating tokens for user: {user_id}")
             access_token = create_access_token(data={"sub": user_id})
             refresh_token = create_refresh_token(data={"sub": user_id})
-            
-            # Import settings to get token expiry time
-            from app.core.config import settings
             
             logger.info(f"Tokens created successfully for user: {user_id}")
             return {
@@ -212,6 +210,7 @@ async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Dict[str, Any]:
     """Get current authenticated user from JWT token"""
+    
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -220,12 +219,7 @@ async def get_current_user(
     try:
         # Verify token format
         payload = verify_token(credentials.credentials)
-
-        if not payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+        
         
         # Check if token is blacklisted
         auth_service = AuthService()
