@@ -36,6 +36,8 @@ class UserService:
             'is_verified': user_data.get('is_verified'),
             'created_at': user_data.get('created_at'),
             'updated_at': user_data.get('updated_at'),
+            'followers_count': user_data.get('followers_count', 0),
+            'following_count': user_data.get('following_count', 0),
         }
         
         return clean_user_data

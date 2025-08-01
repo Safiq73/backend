@@ -147,6 +147,8 @@ class UserResponse(UserBase):
     id: UUID
     is_active: bool = True
     is_verified: bool = False
+    followers_count: int = 0
+    following_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -399,6 +401,47 @@ class RepresentativeLinkRequest(BaseModel):
 
 class UserWithRepresentativeResponse(UserResponse):
     rep_accounts: List[RepresentativeWithDetails] = []
+
+# Follow/Following models
+class FollowUser(BaseModel):
+    id: UUID
+    username: str
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_verified: bool = False
+    mutual: bool = False
+    followed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class FollowResponse(BaseModel):
+    success: bool = True
+    message: str
+    mutual: bool = False
+
+class UnfollowResponse(BaseModel):
+    success: bool = True
+    message: str
+
+class FollowersListResponse(BaseModel):
+    followers: List[FollowUser]
+    total_count: int
+    page: int
+    size: int
+    has_next: bool
+
+class FollowingListResponse(BaseModel):
+    following: List[FollowUser]
+    total_count: int
+    page: int
+    size: int
+    has_next: bool
+
+class FollowStatsResponse(BaseModel):
+    followers_count: int
+    following_count: int
+    mutual_follows_count: int
 
 # Enable forward references
 CommentResponse.model_rebuild()
