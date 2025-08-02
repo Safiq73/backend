@@ -402,6 +402,27 @@ class RepresentativeLinkRequest(BaseModel):
 class UserWithRepresentativeResponse(UserResponse):
     rep_accounts: List[RepresentativeWithDetails] = []
 
+# Public user response without email for public profiles
+class PublicUserResponse(BaseModel):
+    id: UUID
+    username: str
+    display_name: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    title: Optional[UUID] = None
+    is_active: bool = True
+    is_verified: bool = False
+    followers_count: int = 0
+    following_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PublicUserWithRepresentativeResponse(PublicUserResponse):
+    rep_accounts: List[RepresentativeWithDetails] = []
+
 # Follow/Following models
 class FollowUser(BaseModel):
     id: UUID

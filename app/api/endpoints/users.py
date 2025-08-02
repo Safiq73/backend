@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from app.services.auth_service import get_current_user
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from app.services.auth_service import get_current_user, get_current_user_optional
 from app.services.user_service import UserService
 from app.services.post_service import PostService
 from app.services.representative_service import RepresentativeService
-from app.models.pydantic_models import APIResponse, UserUpdate, UserResponse, UserWithRepresentativeResponse
-from typing import Dict, Any
+from app.models.pydantic_models import APIResponse, UserUpdate, UserResponse, UserWithRepresentativeResponse, PublicUserWithRepresentativeResponse
+from typing import Dict, Any, Optional
+from uuid import UUID
 
 router = APIRouter()
 user_service = UserService()
@@ -35,6 +36,33 @@ async def get_current_user_profile(current_user: Dict[str, Any] = Depends(get_cu
         success=True,
         message="User profile retrieved successfully",
         data=UserWithRepresentativeResponse(**user_data)
+    )
+
+
+@router.get("/{user_id}", response_model=APIResponse)
+async def get_user_by_id(
+    user_id: UUID = Path(..., description="ID of the user to get"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+):
+    """Get public user profile by ID"""
+    # Get user data
+    user_data = await user_service.get_user_by_id(user_id)
+    
+    if not user_data:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Remove sensitive information for public access
+    user_data.pop('password_hash', None)
+    user_data.pop('email', None)  # Don't expose email to other users
+    
+    # Get representative accounts linked to the user
+    rep_accounts = await representative_service.get_user_rep_accounts(user_id)
+    user_data['rep_accounts'] = rep_accounts
+    
+    return APIResponse(
+        success=True,
+        message="User profile retrieved successfully",
+        data=PublicUserWithRepresentativeResponse(**user_data)
     )
 
 @router.get("/posts", response_model=APIResponse)
