@@ -7,7 +7,9 @@ import aiohttp
 from uuid import uuid4
 
 # Configuration
-BASE_URL = "http://localhost:8000"
+from config.api_config import BACKEND_URL
+
+BASE_URL = BACKEND_URL
 API_BASE = f"{BASE_URL}/api/v1"
 
 # Test user credentials

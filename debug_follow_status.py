@@ -4,7 +4,9 @@ Debug follow status response
 import requests
 from uuid import uuid4
 
-BASE_URL = "http://localhost:8000/api/v1"
+from config.api_config import API_BASE_URL
+
+BASE_URL = API_BASE_URL
 
 # Create two test users
 user1_data = {

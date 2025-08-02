@@ -85,12 +85,7 @@ async def login(login_data: LoginRequest):
         success=True,
         message="Login successful",
         data={
-            "user": {
-                "id": str(user["id"]),
-                "email": user["email"],
-                "username": user["username"],
-                "display_name": user["display_name"]
-            },
+            "user": user,  # Return the full user data including rep_accounts
             "tokens": tokens
         }
     )

@@ -136,7 +136,7 @@ class PostService:
     async def _check_post_status_authorization(self, post: Dict[str, Any], user_id: UUID) -> bool:
         """Check if user is authorized to update post status"""
         # Check if user is the post author
-        if UUID(post['author']['id']) == user_id:
+        if post['author']['id'] == user_id:
             return True
         
         # Check if post has an assignee and user is linked to that representative
@@ -298,6 +298,7 @@ class PostService:
             "title": post['title'],
             "content": post['content'],
             "post_type": post['post_type'],
+            "status": post.get('status'),  # Include status field
             "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
             "location": post.get('location'),
             "author": post['author'],

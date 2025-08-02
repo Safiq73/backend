@@ -4,8 +4,9 @@ Comprehensive test for follow/unfollow API endpoints
 import requests
 import json
 from uuid import uuid4
+from config.api_config import API_BASE_URL
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = API_BASE_URL
 
 def test_comprehensive_follow_functionality():
     """Test comprehensive follow/unfollow scenarios"""

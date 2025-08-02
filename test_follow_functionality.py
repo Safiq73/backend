@@ -7,7 +7,9 @@ import json
 from uuid import uuid4
 
 # Configuration
-BASE_URL = "http://localhost:8000/api/v1"
+from config.api_config import API_BASE_URL, BACKEND_URL
+
+BASE_URL = API_BASE_URL
 TEST_EMAIL_1 = "test_user_1@example.com"
 TEST_EMAIL_2 = "test_user_2@example.com"
 TEST_USERNAME_1 = "test_user_1"
@@ -208,7 +210,7 @@ async def main():
 
 if __name__ == "__main__":
     print("🧪 Follow/Unfollow API Test Suite")
-    print("Make sure your server is running on http://localhost:8000")
+    print(f"Make sure your server is running on {BACKEND_URL}")
     print("Press Ctrl+C to cancel...")
     
     try:
