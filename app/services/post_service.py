@@ -38,6 +38,7 @@ class PostService:
         post_type: Optional[str] = None,
         location: Optional[str] = None,
         author_id: Optional[UUID] = None,
+        assignee: Optional[List[str]] = None,
         current_user_id: Optional[UUID] = None
     ) -> List[Dict[str, Any]]:
         """Get posts with filters and pagination"""
@@ -47,7 +48,8 @@ class PostService:
             limit=limit,
             post_type=post_type,
             user_id=author_id,
-            location=location
+            location=location,
+            assignee=assignee
         )
 
         # Convert to response format
@@ -56,7 +58,7 @@ class PostService:
             response = await self._format_post_response(post, current_user_id)
             responses.append(response)
         
-        logger.info(f"Retrieved {len(responses)} posts with filters: type={post_type}, location={location}")
+        logger.info(f"Retrieved {len(responses)} posts with filters: type={post_type}, location={location}, assignee={assignee}")
         return responses
             
     
@@ -105,6 +107,52 @@ class PostService:
         except Exception as e:
             logger.error(f"Error updating post {post_id}: {e}")
             raise HTTPException(status_code=500, detail="Failed to update post")
+
+    async def update_post_status(self, post_id: UUID, status: str, current_user_id: UUID) -> Dict[str, Any]:
+        """Update post status with authorization checks"""
+        # Get the post first to check authorization
+        post = await self.db_service.get_post_by_id(post_id)
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Check if user is authorized to update status
+        is_authorized = await self._check_post_status_authorization(post, current_user_id)
+        if not is_authorized:
+            raise HTTPException(
+                status_code=403, 
+                detail="Not authorized to update post status. Only post author or assigned representatives can update status."
+            )
+        
+        # Update the post status
+        updated_post = await self.db_service.update_post_status(post_id, status)
+        if not updated_post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        response = await self._format_post_response(updated_post, current_user_id)
+        
+        logger.info(f"Updated post {post_id} status to {status} by user {current_user_id}")
+        return response
+
+    async def _check_post_status_authorization(self, post: Dict[str, Any], user_id: UUID) -> bool:
+        """Check if user is authorized to update post status"""
+        # Check if user is the post author
+        if post['author']['id'] == user_id:
+            return True
+        
+        # Check if post has an assignee and user is linked to that representative
+        assignee_id = post.get('assignee')
+        if assignee_id:
+            # Get user's linked representative accounts
+            from app.services.representative_service import RepresentativeService
+            rep_service = RepresentativeService()
+            user_rep_accounts = await rep_service.get_user_rep_accounts(user_id)
+            
+            # Check if any of user's representative accounts match the assignee
+            for rep_account in user_rep_accounts:
+                if str(rep_account['id']) == str(assignee_id):
+                    return True
+        
+        return False
     
     async def delete_post(self, post_id: UUID, current_user_id: UUID) -> bool:
         """Delete a post"""
@@ -250,6 +298,7 @@ class PostService:
             "title": post['title'],
             "content": post['content'],
             "post_type": post['post_type'],
+            "status": post.get('status'),  # Include status field
             "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
             "location": post.get('location'),
             "author": post['author'],

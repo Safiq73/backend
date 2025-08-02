@@ -212,6 +212,13 @@ class PostUpdate(BaseModel):
     media_urls: Optional[List[str]] = None
 
 
+class PostStatusUpdate(BaseModel):
+    status: PostStatus = Field(..., description="New status for the post")
+
+    class Config:
+        use_enum_values = True
+
+
 class PostResponse(PostBase):
     id: str
     user_id: str
@@ -373,6 +380,7 @@ class PostFilter(BaseModel):
     post_type: Optional[PostType] = None
     status: Optional[PostStatus] = None
     user_id: Optional[str] = None
+    assignee: Optional[List[str]] = Field(None, description="Filter by assignee representative IDs")
     tags: Optional[List[str]] = None
     search_query: Optional[str] = None
 

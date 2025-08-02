@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, UploadFile, File
 from typing import Optional, List, Dict, Any
-from app.schemas import PostCreate, PostUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
+from app.schemas import PostCreate, PostUpdate, PostStatusUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
 from app.services.post_service import PostService
 from app.services.mixed_content_service import mixed_content_service
 from app.services.db_service import DatabaseService
-from app.services.auth_service import get_current_user
+from app.services.auth_service import get_current_user, get_current_user_optional
 from app.services.s3_upload_service import s3_upload_service
 from app.core.config import settings
 from app.core.logging_config import get_logger, log_error_with_context
@@ -21,9 +21,10 @@ async def get_posts(
     size: int = Query(10, ge=1, le=100),
     post_type: Optional[str] = Query(None),
     post_status: Optional[str] = Query(None),
+    assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
 ):
     """Get mixed content (posts + news) with filters and pagination"""
     try:
@@ -32,7 +33,7 @@ async def get_posts(
         
         logger.info(
             f"Fetching mixed content | Page: {page}, Size: {size} | "
-            f"Filters: type={post_type}, status={post_status} | "
+            f"Filters: type={post_type}, status={post_status}, assignee={assignee} | "
             f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
         )
         
@@ -42,6 +43,7 @@ async def get_posts(
             size=size,
             user_id=user_id,
             post_type=post_type,
+            assignee=assignee,
             sort_by=sort_by,
             order=order
         )
@@ -59,7 +61,8 @@ async def get_posts(
                 'size': size,
                 'filters': {
                     'post_type': post_type,
-                    'status': post_status
+                    'status': post_status,
+                    'assignee': assignee
                 }
             }
         )
@@ -75,6 +78,7 @@ async def get_posts_only(
     size: int = Query(10, ge=1, le=100),
     post_type: Optional[str] = Query(None),
     post_status: Optional[str] = Query(None),
+    assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
@@ -86,7 +90,7 @@ async def get_posts_only(
         
         logger.info(
             f"Fetching posts only | Page: {page}, Size: {size} | "
-            f"Filters: type={post_type}, status={post_status} | "
+            f"Filters: type={post_type}, status={post_status}, assignee={assignee} | "
             f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
         )
         
@@ -94,6 +98,7 @@ async def get_posts_only(
             skip=(page - 1) * size,
             limit=size,
             post_type=post_type,
+            assignee=assignee,
             current_user_id=user_id
         )
         
@@ -322,7 +327,6 @@ async def create_post(
     }
     
     post = await post_service.create_post(post_dict, current_user['id'])
-    import pdb; pdb.set_trace()  # Debugging breakpoint
     return APIResponse(
         success=True,
         message="Post created successfully",
@@ -741,5 +745,30 @@ async def save_post(
         success=True,
         message=f"Post {action} successfully",
         data=result
+    )
+
+
+@router.patch("/{post_id}/status", response_model=APIResponse)
+async def update_post_status(
+    post_id: str,
+    status_data: PostStatusUpdate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update post status - Only authorized users (post author or assigned representative) can update"""
+    logger.info(f"Updating post status | Post ID: {post_id} | New Status: {status_data.status} | User: {current_user['id']}")
+    
+    # Update post status with authorization checks
+    updated_post = await post_service.update_post_status(
+        post_id, 
+        status_data.status, 
+        current_user['id']
+    )
+    
+    logger.info(f"Post status updated successfully | Post ID: {post_id} | Status: {status_data.status}")
+    
+    return APIResponse(
+        success=True,
+        message=f"Post status updated to {status_data.status} successfully",
+        data={"post": updated_post}
     )
     

@@ -32,10 +32,13 @@ class UserService:
             'bio': user_data.get('bio'),
             'avatar_url': user_data.get('avatar_url'),
             'title': user_data.get('title'),  # Updated: this field now called 'title' (refers to title UUID)
+            'rep_accounts': user_data.get('rep_accounts', []),  # Include rep_accounts for authorization
             'is_active': user_data.get('is_active'),
             'is_verified': user_data.get('is_verified'),
             'created_at': user_data.get('created_at'),
             'updated_at': user_data.get('updated_at'),
+            'followers_count': user_data.get('followers_count', 0),
+            'following_count': user_data.get('following_count', 0),
         }
         
         return clean_user_data

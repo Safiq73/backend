@@ -82,10 +82,11 @@ class DatabaseService:
     async def get_user_by_id(self, user_id: UUID) -> Optional[Dict[str, Any]]:
         """Get user by ID with detailed representative account information"""
         async with db_manager.get_connection() as conn:
-            # Get basic user information
+            # Get basic user information including follow counts
             user_query = """
                 SELECT u.id, u.username, u.email, u.password_hash, u.display_name, u.bio, u.avatar_url,
-                       u.rep_accounts, u.is_active, u.is_verified, u.created_at, u.updated_at
+                       u.rep_accounts, u.is_active, u.is_verified, u.created_at, u.updated_at,
+                       u.followers_count, u.following_count
                 FROM users u
                 WHERE u.id = $1
             """
@@ -409,8 +410,9 @@ class DatabaseService:
         """Get post by ID with author information including rep_accounts"""
         async with db_manager.get_connection() as conn:
             query = """
-                SELECT p.id, p.title, p.content, p.post_type, p.media_urls, p.location, p.latitude, p.longitude, p.tags,
-                       p.created_at, p.updated_at,
+                SELECT p.id, p.title, p.content, p.post_type, p.status, p.assignee, p.media_urls, p.location, p.latitude, p.longitude, p.tags,
+                       p.upvotes, p.downvotes, p.comment_count, p.view_count, p.share_count, p.priority_score,
+                       p.created_at, p.updated_at, p.last_activity_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
                        u.rep_accounts
@@ -480,13 +482,14 @@ class DatabaseService:
         post_type: Optional[str] = None,
         user_id: Optional[UUID] = None,
         location: Optional[str] = None,
+        assignee: Optional[List[str]] = None,
         tags: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """Get posts with filters and pagination including author rep_accounts"""
         async with db_manager.get_connection() as conn:
             # Build the base query
             query = """
-                SELECT p.id, p.title, p.content, p.post_type, p.status,
+                SELECT p.id, p.title, p.content, p.post_type, p.status, p.assignee,
                        p.media_urls, p.location, p.tags, p.upvotes, p.downvotes, p.comment_count,
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
@@ -515,6 +518,21 @@ class DatabaseService:
                 conditions.append(f"p.location ILIKE ${param_num}")
                 values.append(f"%{location}%")
                 param_num += 1
+            
+            if assignee and len(assignee) > 0:
+                # Convert list of strings to list of UUIDs if needed
+                assignee_uuids = []
+                for a in assignee:
+                    if isinstance(a, str):
+                        assignee_uuids.append(UUID(a))
+                    else:
+                        assignee_uuids.append(a)
+                
+                # Use IN clause for multiple assignees
+                placeholders = [f"${param_num + i}" for i in range(len(assignee_uuids))]
+                conditions.append(f"p.assignee IN ({', '.join(placeholders)})")
+                values.extend(assignee_uuids)
+                param_num += len(assignee_uuids)
             
             if tags:
                 conditions.append(f"p.tags && ${param_num}")
@@ -625,6 +643,23 @@ class DatabaseService:
             """
             
             row = await conn.fetchrow(query, *values)
+            if not row:
+                return None
+            
+            # Get the full post with author info
+            return await self.get_post_by_id(post_id)
+
+    async def update_post_status(self, post_id: UUID, status: str) -> Optional[Dict[str, Any]]:
+        """Update post status specifically"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                UPDATE posts 
+                SET status = $1, updated_at = NOW(), last_activity_at = NOW()
+                WHERE id = $2
+                RETURNING id, user_id, assignee
+            """
+            
+            row = await conn.fetchrow(query, status, post_id)
             if not row:
                 return None
             
@@ -1000,3 +1035,220 @@ class DatabaseService:
                 representatives.append(representative)
             
             return representatives
+
+    # Follow/Unfollow operations
+    async def follow_user(self, follower_id: UUID, followed_id: UUID) -> Dict[str, Any]:
+        """Follow a user and update mutual status"""
+        async with self.get_connection_with_retry() as conn:
+            async with conn.transaction():
+                # Check if already following
+                check_query = """
+                    SELECT 1 FROM follows 
+                    WHERE follower_id = $1 AND followed_id = $2
+                """
+                existing = await conn.fetchrow(check_query, follower_id, followed_id)
+                
+                if existing:
+                    raise ValueError("User is already being followed")
+                
+                # Check if users exist
+                user_check_query = """
+                    SELECT 
+                        (SELECT COUNT(*) FROM users WHERE id = $1) as follower_exists,
+                        (SELECT COUNT(*) FROM users WHERE id = $2) as followed_exists
+                """
+                user_check = await conn.fetchrow(user_check_query, follower_id, followed_id)
+                
+                if user_check['follower_exists'] == 0:
+                    raise ValueError("Follower user does not exist")
+                if user_check['followed_exists'] == 0:
+                    raise ValueError("User to follow does not exist")
+                
+                # Insert follow relationship
+                insert_query = """
+                    INSERT INTO follows (follower_id, followed_id, created_at)
+                    VALUES ($1, $2, NOW())
+                    RETURNING created_at
+                """
+                result = await conn.fetchrow(insert_query, follower_id, followed_id)
+                
+                # Check if mutual relationship exists
+                mutual_query = """
+                    SELECT mutual FROM follows 
+                    WHERE follower_id = $1 AND followed_id = $2
+                """
+                mutual_result = await conn.fetchrow(mutual_query, follower_id, followed_id)
+                is_mutual = mutual_result['mutual'] if mutual_result else False
+                
+                logger.info(f"User {follower_id} followed user {followed_id} | Mutual: {is_mutual}")
+                
+                return {
+                    'success': True,
+                    'mutual': is_mutual,
+                    'followed_at': result['created_at']
+                }
+
+    async def unfollow_user(self, follower_id: UUID, followed_id: UUID) -> Dict[str, Any]:
+        """Unfollow a user and update mutual status"""
+        async with self.get_connection_with_retry() as conn:
+            async with conn.transaction():
+                # Check if following relationship exists
+                check_query = """
+                    SELECT 1 FROM follows 
+                    WHERE follower_id = $1 AND followed_id = $2
+                """
+                existing = await conn.fetchrow(check_query, follower_id, followed_id)
+                
+                if not existing:
+                    raise ValueError("User is not being followed")
+                
+                # Delete follow relationship
+                delete_query = """
+                    DELETE FROM follows 
+                    WHERE follower_id = $1 AND followed_id = $2
+                """
+                await conn.execute(delete_query, follower_id, followed_id)
+                
+                logger.info(f"User {follower_id} unfollowed user {followed_id}")
+                
+                return {'success': True}
+
+    async def get_user_followers(self, user_id: UUID, page: int = 1, size: int = 20) -> Dict[str, Any]:
+        """Get list of users following the specified user"""
+        async with db_manager.get_connection() as conn:
+            offset = (page - 1) * size
+            
+            # Get followers with user details
+            query = """
+                SELECT 
+                    u.id,
+                    u.username,
+                    u.display_name,
+                    u.avatar_url,
+                    u.is_verified,
+                    f.mutual,
+                    f.created_at as followed_at
+                FROM follows f
+                JOIN users u ON f.follower_id = u.id
+                WHERE f.followed_id = $1
+                ORDER BY f.created_at DESC
+                LIMIT $2 OFFSET $3
+            """
+            
+            followers_rows = await conn.fetch(query, user_id, size, offset)
+            
+            # Get total count
+            count_query = """
+                SELECT COUNT(*) as total
+                FROM follows f
+                WHERE f.followed_id = $1
+            """
+            count_result = await conn.fetchrow(count_query, user_id)
+            total_count = count_result['total']
+            
+            followers = [dict(row) for row in followers_rows]
+            
+            return {
+                'followers': followers,
+                'total_count': total_count,
+                'page': page,
+                'size': size,
+                'has_next': total_count > page * size
+            }
+
+    async def get_user_following(self, user_id: UUID, page: int = 1, size: int = 20) -> Dict[str, Any]:
+        """Get list of users that the specified user is following"""
+        async with db_manager.get_connection() as conn:
+            offset = (page - 1) * size
+            
+            # Get following with user details
+            query = """
+                SELECT 
+                    u.id,
+                    u.username,
+                    u.display_name,
+                    u.avatar_url,
+                    u.is_verified,
+                    f.mutual,
+                    f.created_at as followed_at
+                FROM follows f
+                JOIN users u ON f.followed_id = u.id
+                WHERE f.follower_id = $1
+                ORDER BY f.created_at DESC
+                LIMIT $2 OFFSET $3
+            """
+            
+            following_rows = await conn.fetch(query, user_id, size, offset)
+            
+            # Get total count
+            count_query = """
+                SELECT COUNT(*) as total
+                FROM follows f
+                WHERE f.follower_id = $1
+            """
+            count_result = await conn.fetchrow(count_query, user_id)
+            total_count = count_result['total']
+            
+            following = [dict(row) for row in following_rows]
+            
+            return {
+                'following': following,
+                'total_count': total_count,
+                'page': page,
+                'size': size,
+                'has_next': total_count > page * size
+            }
+
+    async def get_follow_stats(self, user_id: UUID) -> Dict[str, Any]:
+        """Get follow statistics for a user"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT 
+                    u.followers_count,
+                    u.following_count,
+                    (
+                        SELECT COUNT(*) 
+                        FROM follows f 
+                        WHERE f.follower_id = $1 AND f.mutual = true
+                    ) as mutual_follows_count
+                FROM users u
+                WHERE u.id = $1
+            """
+            
+            result = await conn.fetchrow(query, user_id)
+            
+            if not result:
+                return {
+                    'followers_count': 0,
+                    'following_count': 0,
+                    'mutual_follows_count': 0
+                }
+            
+            return dict(result)
+
+    async def check_follow_status(self, follower_id: UUID, followed_id: UUID) -> Dict[str, Any]:
+        """Check if one user follows another and get mutual status"""
+        async with db_manager.get_connection() as conn:
+            # Check if follower follows followed
+            follow_query = """
+                SELECT mutual FROM follows 
+                WHERE follower_id = $1 AND followed_id = $2
+            """
+            follow_result = await conn.fetchrow(follow_query, follower_id, followed_id)
+            
+            # Check if followed follows follower back  
+            follow_back_query = """
+                SELECT 1 FROM follows 
+                WHERE follower_id = $1 AND followed_id = $2
+            """
+            follow_back_result = await conn.fetchrow(follow_back_query, followed_id, follower_id)
+            
+            is_following = follow_result is not None
+            is_followed_by = follow_back_result is not None
+            mutual = follow_result['mutual'] if follow_result else False
+            
+            return {
+                'is_following': is_following,
+                'is_followed_by': is_followed_by,
+                'mutual': mutual
+            }

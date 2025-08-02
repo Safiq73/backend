@@ -1,7 +1,8 @@
 from passlib.context import CryptContext
-from jose import JWTError, jwt
+from jose import JWTError, jwt, ExpiredSignatureError
 from datetime import datetime, timedelta
 from typing import Optional
+from fastapi import HTTPException, status
 import os
 
 # Password hashing
@@ -48,7 +49,14 @@ def create_refresh_token(data: dict):
 def verify_token(token: str) -> Optional[dict]:
     """Verify and decode JWT token"""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired"
+        )
     except JWTError:
-        return None
+        raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
