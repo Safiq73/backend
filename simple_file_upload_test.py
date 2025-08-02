@@ -9,7 +9,9 @@ import tempfile
 import os
 from pathlib import Path
 
-BASE_URL = "http://localhost:8000/api/v1"
+from config.api_config import API_BASE_URL
+
+BASE_URL = API_BASE_URL
 
 def create_test_file(filename: str, content: bytes, content_type: str = "image/jpeg") -> str:
     """Create a test file for upload"""

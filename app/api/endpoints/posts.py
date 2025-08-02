@@ -4,7 +4,7 @@ from app.schemas import PostCreate, PostUpdate, PostStatusUpdate, PostResponse, 
 from app.services.post_service import PostService
 from app.services.mixed_content_service import mixed_content_service
 from app.services.db_service import DatabaseService
-from app.services.auth_service import get_current_user
+from app.services.auth_service import get_current_user, get_current_user_optional
 from app.services.s3_upload_service import s3_upload_service
 from app.core.config import settings
 from app.core.logging_config import get_logger, log_error_with_context
@@ -24,7 +24,7 @@ async def get_posts(
     assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
 ):
     """Get mixed content (posts + news) with filters and pagination"""
     try:

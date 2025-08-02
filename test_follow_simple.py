@@ -4,9 +4,10 @@ Simple follow/unfollow functionality test using requests library
 import requests
 import json
 from uuid import uuid4
+from config.api_config import API_BASE_URL, BACKEND_URL
 
 # Configuration
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = API_BASE_URL
 
 def test_follow_functionality():
     """Test the follow/unfollow endpoints"""
@@ -152,7 +153,7 @@ def test_follow_functionality():
         print("\n🎉 All tests completed successfully!")
         
     except requests.exceptions.ConnectionError:
-        print("❌ Connection failed. Make sure the server is running on http://localhost:8000")
+        print(f"❌ Connection failed. Make sure the server is running on {BACKEND_URL}")
     except Exception as e:
         print(f"❌ Test failed with error: {e}")
 

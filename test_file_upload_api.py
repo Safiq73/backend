@@ -9,7 +9,9 @@ import os
 from pathlib import Path
 
 # Configuration
-BASE_URL = "http://localhost:8000/api/v1"
+from config.api_config import API_BASE_URL
+
+BASE_URL = API_BASE_URL
 
 def create_test_image(filename: str, size: tuple = (800, 600)) -> str:
     """Create a test image file for upload testing"""

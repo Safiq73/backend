@@ -7,7 +7,9 @@ import json
 from pathlib import Path
 
 # Configuration
-BASE_URL = "http://localhost:8000/api/v1"
+from config.api_config import API_BASE_URL
+
+BASE_URL = API_BASE_URL
 TEST_FILES_DIR = Path(__file__).parent / "test_files"
 
 def test_create_post_with_media():

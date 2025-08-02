@@ -267,3 +267,47 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed"
         )
+
+
+# Optional authentication dependency - returns None if no auth provided
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Optional[Dict[str, Any]]:
+    """Get current authenticated user from JWT token, or None if not authenticated"""
+    
+    if not credentials:
+        return None
+        
+    try:
+        # Verify token format
+        payload = verify_token(credentials.credentials)
+        
+        # Check if token is blacklisted
+        auth_service = AuthService()
+        if await auth_service.is_token_blacklisted(credentials.credentials):
+            logger.warning("Blacklisted token used")
+            return None
+        
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        
+        # Convert string to UUID
+        try:
+            user_uuid = UUID(user_id)
+        except ValueError:
+            logger.debug(f"Invalid user ID format: {user_id}")
+            return None
+
+        # Get user from database
+        user = await auth_service.get_user_by_id(user_uuid)
+        
+        if user and user.get('is_active', True):
+            logger.debug(f"Current user retrieved (optional) | User ID: {user['id']}")
+            return user
+
+        return None
+            
+    except Exception as e:
+        logger.debug(f"Optional auth error: {e}")
+        return None
