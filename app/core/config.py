@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     database_max_overflow: int = 30
     query_timeout_seconds: int = 30
     
+    # WebSocket Configuration
+    websocket_mode: str = "disabled"
+    enable_realtime: bool = False
+    enable_search_ws: bool = False
+    enable_analytics_ws: bool = False
+    enable_notifications_ws: bool = False
+    rest_polling_interval: int = 30
+    
     class Config:
         env_file = ENV_FILE_PATH
         case_sensitive = False

@@ -269,11 +269,10 @@ async def get_current_user(
         )
 
 
-# Optional authentication dependency - returns None if no auth provided
 async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Optional[Dict[str, Any]]:
-    """Get current authenticated user from JWT token, or None if not authenticated"""
+    """Get current authenticated user from JWT token (optional - returns None if not authenticated)"""
     
     if not credentials:
         return None
@@ -309,5 +308,5 @@ async def get_current_user_optional(
         return None
             
     except Exception as e:
-        logger.debug(f"Optional auth error: {e}")
+        logger.debug(f"Get current user optional error: {e}")
         return None

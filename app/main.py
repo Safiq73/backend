@@ -17,6 +17,7 @@ from app.middleware.error_handler import (
     general_exception_handler
 )
 from app.api.v1.api import api_router
+from app.websocket.websocket_endpoints import router as websocket_router
 from app.db.database import startup_db, shutdown_db
 
 # Validate configuration on startup
@@ -89,6 +90,10 @@ def create_application() -> FastAPI:
     # Include API router
     app.include_router(api_router, prefix="/api/v1")
     logger.info("API routes registered")
+    
+    # Include WebSocket router
+    app.include_router(websocket_router, prefix="/api/v1")
+    logger.info("WebSocket routes registered")
 
     # Register exception handlers
     app.add_exception_handler(HTTPException, http_exception_handler)
