@@ -596,4 +596,265 @@ BEGIN
     REFRESH MATERIALIZED VIEW search_stats;
 END;
 $$ LANGUAGE plpgsql;
-CREATE INDEX idx_follows_followed_mutual ON follows (followed_id, mutual);
+
+-- =============================================================================
+-- PERMISSION SYSTEM TABLES
+-- =============================================================================
+
+-- System roles (admin, moderator, representative, citizen, etc.)
+CREATE TABLE system_roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(50) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_system_role BOOLEAN DEFAULT TRUE,
+    level INTEGER DEFAULT 0, -- Higher level = more permissions (0-100)
+    color VARCHAR(7), -- Hex color for UI display
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for system_roles
+CREATE INDEX idx_system_roles_name ON system_roles (name);
+CREATE INDEX idx_system_roles_level ON system_roles (level DESC);
+CREATE INDEX idx_system_roles_system ON system_roles (is_system_role);
+
+-- Dynamic API-based permissions table
+CREATE TABLE api_permissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    route_name VARCHAR(200) UNIQUE NOT NULL, -- e.g., 'POST /api/v1/posts', 'DELETE /api/v1/posts/{id}'
+    method VARCHAR(10) NOT NULL,            -- 'GET', 'POST', 'PUT', 'DELETE', 'PATCH'
+    endpoint VARCHAR(200) NOT NULL,         -- '/api/v1/posts', '/api/v1/posts/{id}'
+    resource_type VARCHAR(50) NOT NULL,     -- 'posts', 'users', 'comments', 'system'
+    operation_type VARCHAR(50) NOT NULL,    -- 'create', 'read', 'update', 'delete', 'list', 'admin'
+    scope VARCHAR(50) DEFAULT 'personal',   -- 'system', 'jurisdiction', 'personal'
+    description TEXT,
+    requires_ownership BOOLEAN DEFAULT FALSE, -- Does user need to own the resource?
+    requires_admin BOOLEAN DEFAULT FALSE,     -- Does this require admin privileges?
+    min_role_level INTEGER DEFAULT 0,         -- Minimum role level required (0-100)
+    is_public BOOLEAN DEFAULT FALSE,           -- Is this endpoint publicly accessible?
+    is_active BOOLEAN DEFAULT TRUE,
+    auto_discovered BOOLEAN DEFAULT FALSE,    -- Was this auto-discovered from routes?
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for api_permissions
+CREATE INDEX idx_api_permissions_route_name ON api_permissions (route_name);
+CREATE INDEX idx_api_permissions_method ON api_permissions (method);
+CREATE INDEX idx_api_permissions_endpoint ON api_permissions (endpoint);
+CREATE INDEX idx_api_permissions_resource_type ON api_permissions (resource_type);
+CREATE INDEX idx_api_permissions_operation_type ON api_permissions (operation_type);
+CREATE INDEX idx_api_permissions_scope ON api_permissions (scope);
+CREATE INDEX idx_api_permissions_method_endpoint ON api_permissions (method, endpoint);
+CREATE INDEX idx_api_permissions_public ON api_permissions (is_public);
+CREATE INDEX idx_api_permissions_active ON api_permissions (is_active);
+CREATE INDEX idx_api_permissions_admin ON api_permissions (requires_admin);
+CREATE INDEX idx_api_permissions_ownership ON api_permissions (requires_ownership);
+
+-- Role-API Permission mapping table (which routes can each role access)
+CREATE TABLE role_api_permissions (
+    role_id UUID REFERENCES system_roles(id) ON DELETE CASCADE,
+    api_permission_id UUID REFERENCES api_permissions(id) ON DELETE CASCADE,
+    granted BOOLEAN DEFAULT TRUE, -- Can also be used to explicitly deny
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (role_id, api_permission_id)
+);
+
+-- Create indexes for role_api_permissions
+CREATE INDEX idx_role_api_permissions_role ON role_api_permissions (role_id);
+CREATE INDEX idx_role_api_permissions_api_permission ON role_api_permissions (api_permission_id);
+CREATE INDEX idx_role_api_permissions_granted ON role_api_permissions (granted);
+
+-- User-Role mapping table (multiple roles per user, with jurisdiction scope)
+CREATE TABLE user_roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES system_roles(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    jurisdiction_id UUID REFERENCES jurisdictions(id) ON DELETE SET NULL, -- NULL = system-wide
+    expires_at TIMESTAMP WITH TIME ZONE NULL, -- NULL = never expires
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    -- Unique constraint: user can have same role only once per jurisdiction
+    UNIQUE(user_id, role_id, COALESCE(jurisdiction_id, '00000000-0000-0000-0000-000000000000'::UUID))
+);
+
+-- Create indexes for user_roles
+CREATE INDEX idx_user_roles_user ON user_roles (user_id);
+CREATE INDEX idx_user_roles_role ON user_roles (role_id);
+CREATE INDEX idx_user_roles_jurisdiction ON user_roles (jurisdiction_id);
+CREATE INDEX idx_user_roles_active ON user_roles (user_id, is_active);
+CREATE INDEX idx_user_roles_expires ON user_roles (expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX idx_user_roles_assigned_by ON user_roles (assigned_by);
+
+-- User permission overrides (grant/deny specific permissions to users)
+CREATE TABLE user_permission_overrides (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,
+    granted BOOLEAN NOT NULL, -- true = grant, false = deny
+    resource_id UUID NULL,    -- specific resource instance (e.g., specific post)
+    jurisdiction_id UUID REFERENCES jurisdictions(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    reason TEXT,
+    expires_at TIMESTAMP WITH TIME ZONE NULL, -- NULL = never expires
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for user_permission_overrides
+CREATE INDEX idx_user_permission_overrides_user ON user_permission_overrides (user_id);
+CREATE INDEX idx_user_permission_overrides_permission ON user_permission_overrides (permission_id);
+CREATE INDEX idx_user_permission_overrides_resource ON user_permission_overrides (resource_id) WHERE resource_id IS NOT NULL;
+CREATE INDEX idx_user_permission_overrides_jurisdiction ON user_permission_overrides (jurisdiction_id);
+CREATE INDEX idx_user_permission_overrides_active ON user_permission_overrides (user_id, is_active);
+CREATE INDEX idx_user_permission_overrides_expires ON user_permission_overrides (expires_at) WHERE expires_at IS NOT NULL;
+
+-- Permission audit log for tracking all permission checks and changes
+CREATE TABLE permission_audit_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL, -- 'permission_check', 'role_assigned', 'permission_granted', etc.
+    resource_type VARCHAR(50) NOT NULL,
+    resource_id UUID NULL,
+    permission_checked VARCHAR(100),
+    result BOOLEAN NOT NULL, -- granted or denied
+    jurisdiction_id UUID REFERENCES jurisdictions(id) ON DELETE SET NULL,
+    ip_address INET,
+    user_agent TEXT,
+    request_path TEXT,
+    request_method VARCHAR(10),
+    additional_data JSONB, -- For storing extra context
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for permission_audit_log
+CREATE INDEX idx_permission_audit_log_user ON permission_audit_log (user_id);
+CREATE INDEX idx_permission_audit_log_action ON permission_audit_log (action);
+CREATE INDEX idx_permission_audit_log_resource ON permission_audit_log (resource_type, resource_id);
+CREATE INDEX idx_permission_audit_log_permission ON permission_audit_log (permission_checked);
+CREATE INDEX idx_permission_audit_log_result ON permission_audit_log (result);
+CREATE INDEX idx_permission_audit_log_created_at ON permission_audit_log (created_at DESC);
+CREATE INDEX idx_permission_audit_log_user_created ON permission_audit_log (user_id, created_at DESC);
+
+-- Permission cache table for performance optimization
+CREATE TABLE permission_cache (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    cache_key VARCHAR(255) NOT NULL, -- Composite key: user_id:permission:resource_id:jurisdiction
+    permissions JSONB NOT NULL, -- Cached permissions array
+    jurisdiction_id UUID REFERENCES jurisdictions(id) ON DELETE CASCADE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, cache_key)
+);
+
+-- Create indexes for permission_cache
+CREATE INDEX idx_permission_cache_user ON permission_cache (user_id);
+CREATE INDEX idx_permission_cache_key ON permission_cache (cache_key);
+CREATE INDEX idx_permission_cache_expires ON permission_cache (expires_at);
+CREATE INDEX idx_permission_cache_jurisdiction ON permission_cache (jurisdiction_id);
+
+-- Token blacklist table (enhanced from existing)
+CREATE TABLE IF NOT EXISTS token_blacklist (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL, -- Unix timestamp
+    revoked_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    reason VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for token_blacklist if not exists
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_hash ON token_blacklist (token_hash);
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires ON token_blacklist (expires_at);
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_user ON token_blacklist (user_id);
+
+-- Permission system functions
+CREATE OR REPLACE FUNCTION update_permission_cache_on_role_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Clear permission cache for affected user when roles change
+    DELETE FROM permission_cache WHERE user_id = COALESCE(NEW.user_id, OLD.user_id);
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to clean expired cache entries
+CREATE OR REPLACE FUNCTION clean_expired_permission_cache()
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM permission_cache WHERE expires_at < NOW();
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to log permission checks
+CREATE OR REPLACE FUNCTION log_permission_check(
+    p_user_id UUID,
+    p_action VARCHAR(100),
+    p_resource_type VARCHAR(50),
+    p_resource_id UUID DEFAULT NULL,
+    p_permission_checked VARCHAR(100) DEFAULT NULL,
+    p_result BOOLEAN DEFAULT NULL,
+    p_jurisdiction_id UUID DEFAULT NULL,
+    p_ip_address INET DEFAULT NULL,
+    p_user_agent TEXT DEFAULT NULL,
+    p_request_path TEXT DEFAULT NULL,
+    p_request_method VARCHAR(10) DEFAULT NULL,
+    p_additional_data JSONB DEFAULT NULL
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO permission_audit_log (
+        user_id, action, resource_type, resource_id, permission_checked,
+        result, jurisdiction_id, ip_address, user_agent, request_path,
+        request_method, additional_data
+    ) VALUES (
+        p_user_id, p_action, p_resource_type, p_resource_id, p_permission_checked,
+        p_result, p_jurisdiction_id, p_ip_address, p_user_agent, p_request_path,
+        p_request_method, p_additional_data
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers for cache invalidation
+CREATE TRIGGER trigger_invalidate_cache_on_user_role_change
+    AFTER INSERT OR UPDATE OR DELETE ON user_roles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_permission_cache_on_role_change();
+
+CREATE TRIGGER trigger_invalidate_cache_on_permission_override_change
+    AFTER INSERT OR UPDATE OR DELETE ON user_permission_overrides
+    FOR EACH ROW
+    EXECUTE FUNCTION update_permission_cache_on_role_change();
+
+-- Update timestamp triggers
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_system_roles_updated_at
+    BEFORE UPDATE ON system_roles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_user_roles_updated_at
+    BEFORE UPDATE ON user_roles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_user_permission_overrides_updated_at
+    BEFORE UPDATE ON user_permission_overrides
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();

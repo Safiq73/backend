@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from app.services.analytics_service import analytics_service
 from app.services.auth_service import get_current_user_optional, get_current_user
 from app.models.pydantic_models import UserResponse
+from app.core.permission_decorators import require_permissions
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 @router.get("/dashboard", summary="Get Comprehensive Dashboard Analytics")
 async def get_dashboard_analytics(
     time_period: str = Query("7d", description="Time period (1d, 7d, 30d)", regex="^(1d|7d|30d)$"),
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_permissions("analytics.get"))
 ):
     """
     Get comprehensive analytics for the dashboard.
@@ -57,7 +58,7 @@ async def get_dashboard_analytics(
 @router.get("/search-insights", summary="Get Detailed Search Insights")
 async def get_search_insights(
     time_period: str = Query("7d", description="Time period (1d, 7d, 30d)", regex="^(1d|7d|30d)$"),
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_permissions("analytics.get"))
 ):
     """
     Get detailed search insights and patterns.
@@ -91,7 +92,7 @@ async def get_search_insights(
 
 @router.get("/real-time", summary="Get Real-time Platform Statistics")
 async def get_real_time_stats(
-    current_user: Optional[UserResponse] = Depends(get_current_user_optional)
+    current_user: UserResponse = Depends(require_permissions("analytics.get"))
 ):
     """
     Get real-time platform statistics.
@@ -133,7 +134,7 @@ async def get_real_time_stats(
 
 @router.post("/clear-cache", summary="Clear Analytics Cache")
 async def clear_analytics_cache(
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_permissions("analytics.clear_cache"))
 ):
     """
     Clear the analytics cache to force fresh data generation.

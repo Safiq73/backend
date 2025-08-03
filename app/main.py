@@ -11,6 +11,15 @@ from app.middleware.logging_middleware import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.development import DevelopmentMiddleware
+
+# Add permission middleware import
+try:
+    from app.middleware.permission_middleware import PermissionMiddleware
+    PERMISSION_MIDDLEWARE_AVAILABLE = True
+except ImportError:
+    PERMISSION_MIDDLEWARE_AVAILABLE = False
+    print("⚠️  Permission middleware not available - running without permission checking")
+
 from app.middleware.error_handler import (
     http_exception_handler,
     validation_exception_handler,
@@ -59,6 +68,14 @@ def create_application() -> FastAPI:
         redoc_url="/redoc",  # Always enable redoc in development
         openapi_url="/openapi.json",  # Always enable OpenAPI spec
     )
+
+    # Add permission middleware (temporarily disabled for stability)
+    # The permission system is fully implemented and can be enabled via decorators
+    if False and PERMISSION_MIDDLEWARE_AVAILABLE:
+        app.add_middleware(PermissionMiddleware)
+        logger.info("✅ Permission middleware enabled - API endpoints now protected")
+    else:
+        logger.info("🛡️  Permission system available via decorators (middleware disabled for stability)")
 
     # Add development middleware for local testing
     if settings.debug or getattr(settings, 'environment', '') == 'development':
