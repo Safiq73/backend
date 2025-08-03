@@ -3,10 +3,14 @@ Central configuration for API testing and development.
 This file contains configurable URLs to avoid hardcoding across multiple test files.
 """
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Backend configuration
-BACKEND_HOST = os.getenv('BACKEND_HOST', 'localhost')
-BACKEND_PORT = os.getenv('BACKEND_PORT', '8001')
+BACKEND_HOST = os.getenv('HOST', 'localhost')
+BACKEND_PORT = int(os.getenv('PORT', '8000'))  # Convert to int immediately
 BACKEND_PROTOCOL = os.getenv('BACKEND_PROTOCOL', 'http')
 
 # Constructed URLs

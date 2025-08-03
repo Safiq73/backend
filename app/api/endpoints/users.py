@@ -1,16 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, UploadFile, File
 from app.services.auth_service import get_current_user, get_current_user_optional
 from app.services.user_service import UserService
 from app.services.post_service import PostService
 from app.services.representative_service import RepresentativeService
+from app.services.s3_upload_service import s3_upload_service
 from app.models.pydantic_models import APIResponse, UserUpdate, UserResponse, UserWithRepresentativeResponse, PublicUserWithRepresentativeResponse
+from app.core.permission_decorators import require_permissions
 from typing import Dict, Any, Optional
 from uuid import UUID
+import logging
 
 router = APIRouter()
 user_service = UserService()
 post_service = PostService()
 representative_service = RepresentativeService()
+logger = logging.getLogger(__name__)
 
 @router.get("/profile", response_model=APIResponse)
 async def get_current_user_profile(current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -125,27 +129,229 @@ async def update_user_profile(
 
 @router.post("/avatar", response_model=APIResponse)
 async def upload_avatar(
+    file: UploadFile = File(..., description="Avatar image file"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Upload avatar (placeholder implementation)"""
-    # In a real implementation, this would handle file upload
-    return APIResponse(
-        success=True,
-        message="Avatar upload endpoint ready",
-        data={"avatar_url": "https://example.com/avatar.jpg"}
-    )
+    """Upload user avatar image to S3"""
+    # Validate current user
+    if not current_user or "id" not in current_user:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    try:
+        logger.info(f"Uploading avatar | User: {current_user['id']} | File: {file.filename}")
+        
+        # Validate file type (only images allowed for avatars)
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only image files are allowed for avatars"
+            )
+        
+        # Check if S3 service is available
+        if not s3_upload_service.is_available():
+            logger.warning("S3 service not available for avatar upload")
+            raise HTTPException(
+                status_code=503,
+                detail="File upload service temporarily unavailable"
+            )
+        
+        # Upload to S3 with user-specific folder
+        avatar_url = await s3_upload_service.upload_file(
+            file=file,
+            post_id=f"avatars/user_{current_user['id']}",
+            use_presigned_url=False
+        )
+        
+        # Update user record with new avatar URL
+        user_data = {'avatar_url': avatar_url}
+        updated_user = await user_service.update_user(current_user['id'], user_data)
+        
+        logger.info(f"Avatar uploaded successfully | User: {current_user['id']} | URL: {avatar_url}")
+        
+        return APIResponse(
+            success=True,
+            message="Avatar uploaded successfully",
+            data={
+                "avatar_url": avatar_url,
+                "user": updated_user
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Avatar upload failed | User: {current_user['id']} | Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload avatar"
+        )
 
 @router.post("/cover-photo", response_model=APIResponse)
 async def upload_cover_photo(
+    file: UploadFile = File(..., description="Cover photo image file"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Upload cover photo (placeholder implementation)"""
-    # In a real implementation, this would handle file upload
-    return APIResponse(
-        success=True,
-        message="Cover photo upload endpoint ready",
-        data={"cover_photo_url": "https://example.com/cover.jpg"}
-    )
+    """Upload user cover photo image to S3"""
+    # Validate current user
+    if not current_user or "id" not in current_user:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    try:
+        logger.info(f"Uploading cover photo | User: {current_user['id']} | File: {file.filename}")
+        
+        # Validate file type (only images allowed for cover photos)
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only image files are allowed for cover photos"
+            )
+        
+        # Check if S3 service is available
+        if not s3_upload_service.is_available():
+            logger.warning("S3 service not available for cover photo upload")
+            raise HTTPException(
+                status_code=503,
+                detail="File upload service temporarily unavailable"
+            )
+        
+        # Upload to S3 with user-specific folder
+        cover_photo_url = await s3_upload_service.upload_file(
+            file=file,
+            post_id=f"covers/user_{current_user['id']}",
+            use_presigned_url=False
+        )
+        
+        # Update user record with new cover photo URL
+        user_data = {'cover_photo_url': cover_photo_url}
+        updated_user = await user_service.update_user(current_user['id'], user_data)
+        
+        logger.info(f"Cover photo uploaded successfully | User: {current_user['id']} | URL: {cover_photo_url}")
+        
+        return APIResponse(
+            success=True,
+            message="Cover photo uploaded successfully",
+            data={
+                "cover_photo_url": cover_photo_url,
+                "user": updated_user
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cover photo upload failed | User: {current_user['id']} | Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload cover photo"
+        )
+
+@router.post("/upload-media", response_model=APIResponse)
+async def upload_user_media(
+    file: UploadFile = File(..., description="Media file to upload"),
+    folder: Optional[str] = Query("general", description="Folder to organize the file"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Upload any media file for the user to S3"""
+    # Validate current user
+    if not current_user or "id" not in current_user:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    try:
+        logger.info(f"Uploading user media | User: {current_user['id']} | File: {file.filename} | Folder: {folder}")
+        
+        # Check if S3 service is available
+        if not s3_upload_service.is_available():
+            logger.warning("S3 service not available for media upload")
+            raise HTTPException(
+                status_code=503,
+                detail="File upload service temporarily unavailable"
+            )
+        
+        # Sanitize folder name
+        safe_folder = "".join(c for c in folder if c.isalnum() or c in ('-', '_')).strip()
+        if not safe_folder:
+            safe_folder = "general"
+        
+        # Upload to S3 with user and folder-specific path
+        media_url = await s3_upload_service.upload_file(
+            file=file,
+            post_id=f"users/{current_user['id']}/{safe_folder}",
+            use_presigned_url=False
+        )
+        
+        logger.info(f"User media uploaded successfully | User: {current_user['id']} | URL: {media_url}")
+        
+        return APIResponse(
+            success=True,
+            message="Media uploaded successfully",
+            data={
+                "media_url": media_url,
+                "filename": file.filename,
+                "folder": safe_folder
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"User media upload failed | User: {current_user['id']} | Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload media"
+        )
+
+@router.delete("/media", response_model=APIResponse)
+async def delete_user_media(
+    media_url: str = Query(..., description="URL of the media to delete"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete user's media file from S3"""
+    # Validate current user
+    if not current_user or "id" not in current_user:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
+    try:
+        logger.info(f"Deleting user media | User: {current_user['id']} | URL: {media_url}")
+        
+        # Verify the media URL belongs to this user (security check)
+        if f"users/{current_user['id']}" not in media_url and f"avatars/user_{current_user['id']}" not in media_url and f"covers/user_{current_user['id']}" not in media_url:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only delete your own media files"
+            )
+        
+        # Check if S3 service is available
+        if not s3_upload_service.is_available():
+            logger.warning("S3 service not available for media deletion")
+            raise HTTPException(
+                status_code=503,
+                detail="File deletion service temporarily unavailable"
+            )
+        
+        # Delete from S3
+        deletion_success = await s3_upload_service.delete_file(media_url)
+        
+        if deletion_success:
+            logger.info(f"User media deleted successfully | User: {current_user['id']} | URL: {media_url}")
+            return APIResponse(
+                success=True,
+                message="Media deleted successfully",
+                data={"deleted_url": media_url}
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete media file"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"User media deletion failed | User: {current_user['id']} | Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete media"
+        )
 
 @router.get("/settings/representative", response_model=APIResponse)
 async def get_user_representative_settings(
@@ -176,7 +382,7 @@ async def get_user_representative_settings(
 async def assign_user_role(
     user_id: str,
     role_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(require_permissions("users.role.put"))
 ):
     """Assign role to user (Admin only)"""
     from uuid import UUID

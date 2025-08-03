@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     enable_notifications_ws: bool = False
     rest_polling_interval: int = 30
     
+    # Permission System
+    enable_permission_middleware: bool = False
+    permission_fail_open: bool = True
+    
     class Config:
         env_file = ENV_FILE_PATH
         case_sensitive = False
