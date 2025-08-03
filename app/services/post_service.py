@@ -89,7 +89,10 @@ class PostService:
                 if not post:
                     raise HTTPException(status_code=404, detail="Post not found")
                 
-                if UUID(post['author']['id']) != current_user_id:
+                post_author_id = post['author']['id']
+                if isinstance(post_author_id, str):
+                    post_author_id = UUID(post_author_id)
+                if post_author_id != current_user_id:
                     raise HTTPException(status_code=403, detail="Not authorized to update this post")
             
             # Update the post
@@ -133,10 +136,71 @@ class PostService:
         logger.info(f"Updated post {post_id} status to {status} by user {current_user_id}")
         return response
 
+    async def update_post_assignee(self, post_id: UUID, assignee_id: Optional[str], current_user_id: UUID) -> Dict[str, Any]:
+        """Update post assignee with authorization checks"""
+        # Get the post first to check authorization
+        post = await self.db_service.get_post_by_id(post_id)
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Check if user is authorized to update assignee
+        is_authorized = await self._check_post_assignee_authorization(post, current_user_id)
+        if not is_authorized:
+            raise HTTPException(
+                status_code=403, 
+                detail="Not authorized to update post assignee. Only post author or current assignee can update assignee."
+            )
+        
+        # If assigning to someone, validate the representative exists
+        if assignee_id:
+            from app.services.representative_service import RepresentativeService
+            rep_service = RepresentativeService()
+            representative = await rep_service.get_representative_by_id(assignee_id)
+            if not representative:
+                raise HTTPException(status_code=400, detail="Invalid representative ID")
+        
+        # Update the post assignee
+        updated_post = await self.db_service.update_post_assignee(post_id, assignee_id)
+        if not updated_post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        response = await self._format_post_response(updated_post, current_user_id)
+        
+        action = "assigned" if assignee_id else "unassigned"
+        logger.info(f"Updated post {post_id} assignee ({action}) by user {current_user_id}")
+        return response
+
+    async def _check_post_assignee_authorization(self, post: Dict[str, Any], user_id: UUID) -> bool:
+        """Check if user is authorized to update post assignee"""
+        # Check if user is the post author
+        post_author_id = post['author']['id']
+        if isinstance(post_author_id, str):
+            post_author_id = UUID(post_author_id)
+        if post_author_id == user_id:
+            return True
+        
+        # Check if user is the current assignee
+        assignee_id = post.get('assignee')
+        if assignee_id:
+            # Get user's linked representative accounts
+            from app.services.representative_service import RepresentativeService
+            rep_service = RepresentativeService()
+            user_rep_accounts = await rep_service.get_user_rep_accounts(user_id)
+            
+            # Check if any of user's representative accounts match the current assignee
+            for rep_account in user_rep_accounts:
+                if str(rep_account['id']) == str(assignee_id):
+                    return True
+        
+        return False
+
     async def _check_post_status_authorization(self, post: Dict[str, Any], user_id: UUID) -> bool:
         """Check if user is authorized to update post status"""
         # Check if user is the post author
-        if post['author']['id'] == user_id:
+        post_author_id = post['author']['id']
+        if isinstance(post_author_id, str):
+            post_author_id = UUID(post_author_id)
+        if post_author_id == user_id:
             return True
         
         # Check if post has an assignee and user is linked to that representative
@@ -162,7 +226,10 @@ class PostService:
             if not post:
                 raise HTTPException(status_code=404, detail="Post not found")
             
-            if UUID(post['author']['id']) != current_user_id:
+            post_author_id = post['author']['id']
+            if isinstance(post_author_id, str):
+                post_author_id = UUID(post_author_id)
+            if post_author_id != current_user_id:
                 raise HTTPException(status_code=403, detail="Not authorized to delete this post")
             
             # Delete the post
@@ -293,14 +360,35 @@ class PostService:
         comments = await self.db_service.get_comments_by_post(post_id)
         comment_count = len(comments)
         
+        # Get assignee details if post has an assignee
+        assignee_info = None
+        if post.get('assignee'):
+            try:
+                from app.services.representative_service import RepresentativeService
+                rep_service = RepresentativeService()
+                # Handle the case where assignee might already be a UUID object
+                assignee_id = post['assignee']
+                if not isinstance(assignee_id, UUID):
+                    assignee_id = UUID(assignee_id)
+                assignee_details = await rep_service.get_representative_with_user_details(assignee_id)
+                if assignee_details:
+                    assignee_info = assignee_details
+            except Exception as e:
+                logger.error(f"Error fetching assignee details for post {post_id}: {e}")
+                # Don't fail the whole request if assignee details can't be fetched
+                assignee_info = None
+        
         return {
             "id": post['id'],
             "title": post['title'],
             "content": post['content'],
             "post_type": post['post_type'],
             "status": post.get('status'),  # Include status field
+            "assignee": post.get('assignee'),  # Include assignee field
+            "assignee_info": assignee_info,  # Include assignee details
             "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
-            "location": post.get('location'),
+            "latitude": post.get('latitude'),
+            "longitude": post.get('longitude'),
             "author": post['author'],
             "created_at": post['created_at'],
             "updated_at": post['updated_at'],
