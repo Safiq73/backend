@@ -38,33 +38,6 @@ async def get_current_user_profile(current_user: Dict[str, Any] = Depends(get_cu
         data=UserWithRepresentativeResponse(**user_data)
     )
 
-
-@router.get("/{user_id}", response_model=APIResponse)
-async def get_user_by_id(
-    user_id: UUID = Path(..., description="ID of the user to get"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
-):
-    """Get public user profile by ID"""
-    # Get user data
-    user_data = await user_service.get_user_by_id(user_id)
-    
-    if not user_data:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Remove sensitive information for public access
-    user_data.pop('password_hash', None)
-    user_data.pop('email', None)  # Don't expose email to other users
-    
-    # Get representative accounts linked to the user
-    rep_accounts = await representative_service.get_user_rep_accounts(user_id)
-    user_data['rep_accounts'] = rep_accounts
-    
-    return APIResponse(
-        success=True,
-        message="User profile retrieved successfully",
-        data=PublicUserWithRepresentativeResponse(**user_data)
-    )
-
 @router.get("/posts", response_model=APIResponse)
 async def get_current_user_posts(
     page: int = Query(1, ge=1),
@@ -103,6 +76,32 @@ async def get_current_user_posts(
             "size": size,
             "total": len(posts)
         }
+    )
+
+@router.get("/{user_id}", response_model=APIResponse)
+async def get_user_by_id(
+    user_id: UUID = Path(..., description="ID of the user to get"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+):
+    """Get public user profile by ID"""
+    # Get user data
+    user_data = await user_service.get_user_by_id(user_id)
+    
+    if not user_data:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Remove sensitive information for public access
+    user_data.pop('password_hash', None)
+    user_data.pop('email', None)  # Don't expose email to other users
+    
+    # Get representative accounts linked to the user
+    rep_accounts = await representative_service.get_user_rep_accounts(user_id)
+    user_data['rep_accounts'] = rep_accounts
+    
+    return APIResponse(
+        success=True,
+        message="User profile retrieved successfully",
+        data=PublicUserWithRepresentativeResponse(**user_data)
     )
 
 @router.put("/profile", response_model=APIResponse)

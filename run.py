@@ -1,6 +1,6 @@
 import uvicorn
 from app.main import app
-from config.api_config import get_info_urls
+from config.api_config import get_info_urls, BACKEND_PORT, BACKEND_HOST
 
 if __name__ == "__main__":
     urls = get_info_urls()
@@ -14,8 +14,8 @@ if __name__ == "__main__":
     
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8001,
+        host=BACKEND_HOST,
+        port=int(BACKEND_PORT),
         reload=True,
         log_level="debug",  # More verbose logging
         access_log=True,    # Enable access logging
