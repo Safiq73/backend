@@ -490,7 +490,7 @@ class DatabaseService:
             # Build the base query
             query = """
                 SELECT p.id, p.title, p.content, p.post_type, p.status, p.assignee,
-                       p.media_urls, p.location, p.tags, p.upvotes, p.downvotes, p.comment_count,
+                       p.media_urls, p.location, p.latitude, p.longitude, p.tags, p.upvotes, p.downvotes, p.comment_count,
                        p.created_at, p.updated_at,
                        u.id as user_id, u.username as author_username, 
                        u.display_name as author_display_name, u.avatar_url as author_avatar_url,
@@ -660,6 +660,26 @@ class DatabaseService:
             """
             
             row = await conn.fetchrow(query, status, post_id)
+            if not row:
+                return None
+            
+            # Get the full post with author info
+            return await self.get_post_by_id(post_id)
+
+    async def update_post_assignee(self, post_id: UUID, assignee_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Update post assignee specifically"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                UPDATE posts 
+                SET assignee = $1, updated_at = NOW(), last_activity_at = NOW()
+                WHERE id = $2
+                RETURNING id, user_id, assignee
+            """
+            
+            # Convert assignee_id to UUID if provided, otherwise set to None
+            assignee_uuid = UUID(assignee_id) if assignee_id else None
+            
+            row = await conn.fetchrow(query, assignee_uuid, post_id)
             if not row:
                 return None
             
@@ -998,10 +1018,19 @@ class DatabaseService:
                     t.level_rank,
                     t.description as title_description,
                     t.title_type,
+                    t.level,
+                    t.is_elected,
+                    t.term_length,
+                    t.status,
+                    t.created_at as title_created_at,
+                    t.updated_at as title_updated_at,
                     j.id as jurisdiction_id,
                     j.name as jurisdiction_name,
                     j.level_name as jurisdiction_level,
-                    j.level_rank as jurisdiction_rank
+                    j.level_rank as jurisdiction_rank,
+                    j.parent_id as parent_jurisdiction_id,
+                    j.created_at as jurisdiction_created_at,
+                    j.updated_at as jurisdiction_updated_at
                 FROM jurisdictions j
                 JOIN representatives r ON r.jurisdiction_id = j.id
                 JOIN titles t ON r.title_id = t.id
@@ -1022,13 +1051,22 @@ class DatabaseService:
                         'abbreviation': rep_data['abbreviation'],
                         'level_rank': rep_data['level_rank'],
                         'description': rep_data['title_description'],
-                        'title_type': rep_data['title_type']
+                        'title_type': rep_data['title_type'],
+                        'level': rep_data['level'],
+                        'is_elected': rep_data['is_elected'],
+                        'term_length': rep_data['term_length'],
+                        'status': rep_data['status'],
+                        'created_at': rep_data['title_created_at'].isoformat() if rep_data['title_created_at'] else None,
+                        'updated_at': rep_data['title_updated_at'].isoformat() if rep_data['title_updated_at'] else None
                     },
                     'jurisdiction': {
                         'id': str(rep_data['jurisdiction_id']),
                         'name': rep_data['jurisdiction_name'],
                         'level_name': rep_data['jurisdiction_level'],
-                        'level_rank': rep_data['jurisdiction_rank']
+                        'level_rank': rep_data['jurisdiction_rank'],
+                        'parent_jurisdiction_id': str(rep_data['parent_jurisdiction_id']) if rep_data['parent_jurisdiction_id'] else None,
+                        'created_at': rep_data['jurisdiction_created_at'].isoformat() if rep_data['jurisdiction_created_at'] else None,
+                        'updated_at': rep_data['jurisdiction_updated_at'].isoformat() if rep_data['jurisdiction_updated_at'] else None
                     },
                     'display_name': f"{rep_data['abbreviation']} - {rep_data['jurisdiction_name']}" if rep_data['abbreviation'] else f"{rep_data['title_name']} - {rep_data['jurisdiction_name']}"
                 }

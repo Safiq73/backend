@@ -57,8 +57,8 @@ async def get_available_representatives(
 
 @router.get("/{rep_id}", response_model=APIResponse)
 async def get_representative(rep_id: UUID):
-    """Get representative by ID"""
-    representative = await representative_service.get_representative_by_id(rep_id)
+    """Get representative by ID with structured format including user information"""
+    representative = await representative_service.get_representative_with_user_details(rep_id)
     
     if not representative:
         raise HTTPException(
@@ -69,7 +69,7 @@ async def get_representative(rep_id: UUID):
     return APIResponse(
         success=True,
         message="Representative retrieved successfully",
-        data=RepresentativeResponse(**representative)
+        data=representative
     )
 
 @router.get("/user/{user_id}/linked", response_model=APIResponse)
@@ -90,7 +90,7 @@ async def get_user_linked_representative(
         success=True,
         message="Linked representative retrieved successfully",
         data={
-            "representative": RepresentativeResponse(**linked_rep) if linked_rep else None
+            "representative": RepresentativeWithDetails(**linked_rep) if linked_rep else None
         }
     )
     

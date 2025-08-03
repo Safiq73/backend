@@ -203,8 +203,6 @@ class PostUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     content: Optional[str] = Field(None, min_length=1, max_length=10000)
     post_type: Optional[PostType] = None
-    status: Optional[PostStatus] = None
-    assignee: Optional[str] = Field(None, description="UUID of representative assigned to handle this post")
     location: Optional[str] = Field(None, max_length=255)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
@@ -214,6 +212,13 @@ class PostUpdate(BaseModel):
 
 class PostStatusUpdate(BaseModel):
     status: PostStatus = Field(..., description="New status for the post")
+
+    class Config:
+        use_enum_values = True
+
+
+class PostAssigneeUpdate(BaseModel):
+    assignee: Optional[str] = Field(..., description="UUID of representative to assign to this post (null to unassign)")
 
     class Config:
         use_enum_values = True

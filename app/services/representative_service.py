@@ -250,6 +250,43 @@ class RepresentativeService:
         logger.info(f"Returning {len(rep_accounts)} representative accounts for user {user_id}")
         return rep_accounts
     
+    async def get_representative_with_user_details(self, rep_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get representative by ID with structured format including user information"""
+        # Get the structured representative details (title_info, jurisdiction_info)
+        rep_details = await self.get_representative_with_details(rep_id)
+        
+        if not rep_details:
+            return None
+        
+        # If there's a user_id, get basic user information
+        user_info = None
+        if rep_details.get("user_id"):
+            from app.services.user_service import UserService
+            user_service = UserService()
+            user_data = await user_service.get_user_by_id(rep_details["user_id"])
+            
+            if user_data:
+                # Include only basic user info, no representative accounts
+                user_info = {
+                    "user_id": user_data["id"],
+                    "username": user_data.get("username"),
+                    "first_name": user_data.get("first_name"),
+                    "last_name": user_data.get("last_name"),
+                    "email": user_data.get("email"),
+                    "created_at": user_data.get("created_at"),
+                    "updated_at": user_data.get("updated_at")
+                }
+        
+        # Return structured response
+        return {
+            "id": rep_details["id"],
+            "created_at": rep_details["created_at"],
+            "updated_at": rep_details["updated_at"],
+            "title_info": rep_details["title_info"],
+            "jurisdiction_info": rep_details["jurisdiction_info"],
+            "user_info": user_info
+        }
+    
     async def link_user_to_representative(self, user_id: UUID, rep_id: UUID) -> Dict[str, Any]:
         """Link a user account to a representative account"""
         async with db_manager.get_connection() as conn:

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, UploadFile, File
 from typing import Optional, List, Dict, Any
-from app.schemas import PostCreate, PostUpdate, PostStatusUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
+from app.schemas import PostCreate, PostUpdate, PostStatusUpdate, PostAssigneeUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
 from app.services.post_service import PostService
 from app.services.mixed_content_service import mixed_content_service
 from app.services.db_service import DatabaseService
@@ -218,7 +218,7 @@ async def get_news_only(
 async def get_representatives_by_location(
     latitude: float = Query(..., ge=6.5, le=37.5, description="Latitude within India bounds"),
     longitude: float = Query(..., ge=68.0, le=97.5, description="Longitude within India bounds"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
 ):
     """Get representatives and judiciary for a specific location"""
     try:
@@ -769,6 +769,32 @@ async def update_post_status(
     return APIResponse(
         success=True,
         message=f"Post status updated to {status_data.status} successfully",
+        data={"post": updated_post}
+    )
+
+
+@router.patch("/{post_id}/assignee", response_model=APIResponse)
+async def update_post_assignee(
+    post_id: str,
+    assignee_data: PostAssigneeUpdate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update post assignee - Only authorized users (post author or current assignee) can update"""
+    action = "assigned" if assignee_data.assignee else "unassigned"
+    logger.info(f"Updating post assignee | Post ID: {post_id} | Action: {action} | User: {current_user['id']}")
+    
+    # Update post assignee with authorization checks
+    updated_post = await post_service.update_post_assignee(
+        post_id, 
+        assignee_data.assignee, 
+        current_user['id']
+    )
+    
+    logger.info(f"Post assignee updated successfully | Post ID: {post_id} | Action: {action}")
+    
+    return APIResponse(
+        success=True,
+        message=f"Post assignee {action} successfully",
         data={"post": updated_post}
     )
     

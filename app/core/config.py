@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Server
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8001
     
     # Logging - Enhanced for local development
     log_level: str = "DEBUG"  # More verbose logging for development
