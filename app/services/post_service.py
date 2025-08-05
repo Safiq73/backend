@@ -281,16 +281,25 @@ class PostService:
             raise HTTPException(status_code=500, detail="Failed to vote on post")
     
     async def save_post(self, post_id: UUID, user_id: UUID) -> Dict[str, bool]:
-        """Save a post for a user"""
+        """Toggle save status for a post by a user"""
         try:
-            await self.db_service.save_post(post_id, user_id)
+            # Check if post is already saved
+            is_currently_saved = await self.db_service.is_post_saved(post_id, user_id)
             
-            logger.info(f"User {user_id} saved post {post_id}")
-            return {"is_saved": True}
+            if is_currently_saved:
+                # Unsave the post
+                await self.db_service.unsave_post(post_id, user_id)
+                logger.info(f"User {user_id} unsaved post {post_id}")
+                return {"is_saved": False}
+            else:
+                # Save the post
+                await self.db_service.save_post(post_id, user_id)
+                logger.info(f"User {user_id} saved post {post_id}")
+                return {"is_saved": True}
             
         except Exception as e:
-            logger.error(f"Error saving post {post_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to save post")
+            logger.error(f"Error toggling save status for post {post_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to save/unsave post")
     
     async def unsave_post(self, post_id: UUID, user_id: UUID) -> Dict[str, bool]:
         """Remove a saved post for a user"""

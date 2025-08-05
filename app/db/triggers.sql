@@ -1,47 +1,47 @@
 -- Database triggers for maintaining counts and activity tracking
 -- These triggers automatically update vote counts, comment counts, and track activities
 
--- Function to update issue vote counts
-CREATE OR REPLACE FUNCTION update_issue_vote_counts()
+-- Function to update post vote counts
+CREATE OR REPLACE FUNCTION update_post_vote_counts()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
-        UPDATE issues SET
+        UPDATE posts SET
             upvotes = (
                 SELECT COUNT(*) FROM votes 
-                WHERE issue_id = NEW.issue_id AND vote_type = 'upvote'
+                WHERE post_id = NEW.post_id AND vote_type = 'upvote'
             ),
             downvotes = (
                 SELECT COUNT(*) FROM votes 
-                WHERE issue_id = NEW.issue_id AND vote_type = 'downvote'
+                WHERE post_id = NEW.post_id AND vote_type = 'downvote'
             ),
             last_activity_at = NOW()
-        WHERE id = NEW.issue_id;
+        WHERE id = NEW.post_id;
         RETURN NEW;
     ELSIF TG_OP = 'DELETE' THEN
-        UPDATE issues SET
+        UPDATE posts SET
             upvotes = (
                 SELECT COUNT(*) FROM votes 
-                WHERE issue_id = OLD.issue_id AND vote_type = 'upvote'
+                WHERE post_id = OLD.post_id AND vote_type = 'upvote'
             ),
             downvotes = (
                 SELECT COUNT(*) FROM votes 
-                WHERE issue_id = OLD.issue_id AND vote_type = 'downvote'
+                WHERE post_id = OLD.post_id AND vote_type = 'downvote'
             ),
             last_activity_at = NOW()
-        WHERE id = OLD.issue_id;
+        WHERE id = OLD.post_id;
         RETURN OLD;
     END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for issue vote counts
-DROP TRIGGER IF EXISTS trigger_update_issue_vote_counts ON votes;
-CREATE TRIGGER trigger_update_issue_vote_counts
+-- Trigger for post vote counts
+DROP TRIGGER IF EXISTS trigger_update_post_vote_counts ON votes;
+CREATE TRIGGER trigger_update_post_vote_counts
     AFTER INSERT OR UPDATE OR DELETE ON votes
     FOR EACH ROW
-    EXECUTE FUNCTION update_issue_vote_counts();
+    EXECUTE FUNCTION update_post_vote_counts();
 
 -- Function to update comment vote counts
 CREATE OR REPLACE FUNCTION update_comment_vote_counts()
@@ -83,33 +83,33 @@ CREATE TRIGGER trigger_update_comment_vote_counts
     FOR EACH ROW
     EXECUTE FUNCTION update_comment_vote_counts();
 
--- Function to update issue comment counts
-CREATE OR REPLACE FUNCTION update_issue_comment_count()
+-- Function to update post comment counts
+CREATE OR REPLACE FUNCTION update_post_comment_count()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        UPDATE issues SET
+        UPDATE posts SET
             comment_count = comment_count + 1,
             last_activity_at = NOW()
-        WHERE id = NEW.issue_id;
+        WHERE id = NEW.post_id;
         RETURN NEW;
     ELSIF TG_OP = 'DELETE' THEN
-        UPDATE issues SET
+        UPDATE posts SET
             comment_count = GREATEST(comment_count - 1, 0),
             last_activity_at = NOW()
-        WHERE id = OLD.issue_id;
+        WHERE id = OLD.post_id;
         RETURN OLD;
     END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for issue comment counts
-DROP TRIGGER IF EXISTS trigger_update_issue_comment_count ON comments;
-CREATE TRIGGER trigger_update_issue_comment_count
+-- Trigger for post comment counts
+DROP TRIGGER IF EXISTS trigger_update_post_comment_count ON comments;
+CREATE TRIGGER trigger_update_post_comment_count
     AFTER INSERT OR DELETE ON comments
     FOR EACH ROW
-    EXECUTE FUNCTION update_issue_comment_count();
+    EXECUTE FUNCTION update_post_comment_count();
 
 -- Function to update comment reply counts
 CREATE OR REPLACE FUNCTION update_comment_reply_count()

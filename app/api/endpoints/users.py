@@ -16,6 +16,48 @@ post_service = PostService()
 representative_service = RepresentativeService()
 logger = logging.getLogger(__name__)
 
+@router.get("/{user_id}/stats", response_model=APIResponse)
+async def get_user_statistics(
+    user_id: UUID = Path(..., description="ID of the user to get statistics for"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+):
+    """Get user statistics including posts count, comments received, upvotes received"""
+    try:
+        # Get user to verify they exist
+        user_data = await user_service.get_user_by_id(user_id)
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user statistics from database
+        from app.services.db_service import DatabaseService
+        db_service = DatabaseService()
+        stats = await db_service.get_user_stats(user_id)
+        
+        # Get additional stats like total views (for now, calculate estimated views)
+        # TODO: Implement proper view tracking
+        estimated_views = stats['posts_count'] * 127  # Mock calculation until view tracking is added
+        
+        user_statistics = {
+            "posts_count": stats['posts_count'],
+            "comments_received": stats['comments_count'],  # Comments on user's posts
+            "upvotes_received": stats['upvotes_received'], # Upvotes on user's posts
+            "total_views": estimated_views  # Estimated views (mock data for now)
+        }
+        
+        logger.info(f"Retrieved statistics for user {user_id}")
+        
+        return APIResponse(
+            success=True,
+            message="User statistics retrieved successfully",
+            data=user_statistics
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving user statistics for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve user statistics")
+
 @router.get("/profile", response_model=APIResponse)
 async def get_current_user_profile(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get current user profile with representative information"""

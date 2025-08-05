@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, Uplo
 from typing import Optional, List, Dict, Any
 from app.schemas import PostCreate, PostUpdate, PostStatusUpdate, PostAssigneeUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
 from app.services.post_service import PostService
+from app.services.comment_service import CommentService
 from app.services.mixed_content_service import mixed_content_service
 from app.services.db_service import DatabaseService
 from app.services.auth_service import get_current_user, get_current_user_optional
@@ -11,6 +12,7 @@ from app.core.logging_config import get_logger, log_error_with_context
 
 router = APIRouter()
 post_service = PostService()
+comment_service = CommentService()
 db_service = DatabaseService()
 logger = get_logger('app.posts')
 
@@ -707,7 +709,9 @@ async def vote_on_post(
         )
     
     # Vote on post
-    result = await post_service.vote_on_post(post_id, current_user['id'], vote_type)
+    # Convert 'up'/'down' to 'upvote'/'downvote' for the service
+    vote_type_full = 'upvote' if vote_type == 'up' else 'downvote'
+    result = await post_service.vote_on_post(post_id, vote_type_full, current_user['id'])
     
     logger.info(f"Vote recorded successfully | Post ID: {post_id} | Vote: {vote_type}")
     
@@ -797,4 +801,25 @@ async def update_post_assignee(
         message=f"Post assignee {action} successfully",
         data={"post": updated_post}
     )
+
+
+@router.get("/{post_id}/comments")
+async def get_comments_for_post(
+    post_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+):
+    """Get all comments for a post"""
+    try:
+        from uuid import UUID
+        post_uuid = UUID(post_id)
+        user_id = UUID(current_user['id']) if current_user else None
+        
+        comments = await comment_service.get_comments_by_post(post_uuid, user_id)
+        return comments
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid post ID format")
+    except Exception as e:
+        logger.error(f"Error retrieving comments for post {post_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve comments")
     
