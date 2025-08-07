@@ -206,7 +206,7 @@ async def upload_avatar(
         
         # Update user record with new avatar URL
         user_data = {'avatar_url': avatar_url}
-        updated_user = await user_service.update_user(current_user['id'], user_data)
+        updated_user = await user_service.update_user(current_user['id'], user_data, current_user['id'])
         
         logger.info(f"Avatar uploaded successfully | User: {current_user['id']} | URL: {avatar_url}")
         
@@ -265,7 +265,7 @@ async def upload_cover_photo(
         
         # Update user record with new cover photo URL
         user_data = {'cover_photo_url': cover_photo_url}
-        updated_user = await user_service.update_user(current_user['id'], user_data)
+        updated_user = await user_service.update_user(current_user['id'], user_data, current_user['id'])
         
         logger.info(f"Cover photo uploaded successfully | User: {current_user['id']} | URL: {cover_photo_url}")
         
