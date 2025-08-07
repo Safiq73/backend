@@ -127,8 +127,8 @@ backend/
 - `GET /api/v1/posts/{post_id}` - Get specific post
 - `PUT /api/v1/posts/{post_id}` - Update post
 - `DELETE /api/v1/posts/{post_id}` - Delete post
-- `POST /api/v1/posts/{post_id}/upvote` - Upvote post
-- `POST /api/v1/posts/{post_id}/downvote` - Downvote post
+- `POST /api/v1/posts/{post_id}/vote?vote_type=up` - Upvote post
+- `POST /api/v1/posts/{post_id}/vote?vote_type=down` - Downvote post
 - `POST /api/v1/posts/{post_id}/save` - Save/unsave post
 
 ### Comments

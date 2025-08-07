@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, Uplo
 from typing import Optional, List, Dict, Any
 from app.schemas import PostCreate, PostUpdate, PostStatusUpdate, PostAssigneeUpdate, PostResponse, PaginatedResponse, APIResponse, AssigneeOption, TitleInfo, JurisdictionInfo
 from app.services.post_service import PostService
+from app.services.comment_service import CommentService
 from app.services.mixed_content_service import mixed_content_service
 from app.services.db_service import DatabaseService
 from app.services.auth_service import get_current_user, get_current_user_optional
@@ -11,6 +12,7 @@ from app.core.logging_config import get_logger, log_error_with_context
 
 router = APIRouter()
 post_service = PostService()
+comment_service = CommentService()
 db_service = DatabaseService()
 logger = get_logger('app.posts')
 
@@ -24,6 +26,7 @@ async def get_posts(
     assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
+    include_follow_status: bool = Query(False, description="Include follow status for post authors"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
 ):
     """Get mixed content (posts + news) with filters and pagination"""
@@ -34,7 +37,8 @@ async def get_posts(
         logger.info(
             f"Fetching mixed content | Page: {page}, Size: {size} | "
             f"Filters: type={post_type}, status={post_status}, assignee={assignee} | "
-            f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
+            f"Sort: {sort_by} {order} | Include Follow Status: {include_follow_status} | "
+            f"User: {user_id or 'anonymous'}"
         )
         
         # Use mixed content service to get posts + news
@@ -45,7 +49,8 @@ async def get_posts(
             post_type=post_type,
             assignee=assignee,
             sort_by=sort_by,
-            order=order
+            order=order,
+            include_follow_status=include_follow_status
         )
         
         logger.info(f"Successfully fetched {len(paginated_result.items)} mixed items for user {user_id or 'anonymous'}")
@@ -81,6 +86,7 @@ async def get_posts_only(
     assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
+    include_follow_status: bool = Query(False, description="Include follow status for post authors"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Get only user-generated posts (no news) with filters and pagination"""
@@ -91,7 +97,8 @@ async def get_posts_only(
         logger.info(
             f"Fetching posts only | Page: {page}, Size: {size} | "
             f"Filters: type={post_type}, status={post_status}, assignee={assignee} | "
-            f"Sort: {sort_by} {order} | User: {user_id or 'anonymous'}"
+            f"Sort: {sort_by} {order} | Include Follow Status: {include_follow_status} | "
+            f"User: {user_id or 'anonymous'}"
         )
         
         posts = await post_service.get_posts(
@@ -99,7 +106,8 @@ async def get_posts_only(
             limit=size,
             post_type=post_type,
             assignee=assignee,
-            current_user_id=user_id
+            current_user_id=user_id,
+            include_follow_status=include_follow_status
         )
         
         # Add source field to posts
@@ -347,6 +355,7 @@ async def get_nearby_posts(
     category: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_follow_status: bool = Query(False, description="Include follow status for post authors"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Get posts near a specific location"""
@@ -355,7 +364,8 @@ async def get_nearby_posts(
         
         logger.info(
             f"Fetching nearby posts | Lat: {latitude}, Lng: {longitude}, Radius: {radius}km | "
-            f"Filters: type={post_type}, category={category} | User: {user_id or 'anonymous'}"
+            f"Filters: type={post_type}, category={category} | Include Follow Status: {include_follow_status} | "
+            f"User: {user_id or 'anonymous'}"
         )
         
         # Get nearby posts using spatial query
@@ -367,7 +377,8 @@ async def get_nearby_posts(
             category=category,
             limit=limit,
             offset=offset,
-            user_id=user_id
+            user_id=user_id,
+            include_follow_status=include_follow_status
         )
         
         logger.info(f"Found {len(nearby_posts)} posts within {radius}km of location")
@@ -600,13 +611,14 @@ async def delete_post_media(
 @router.get("/{post_id}", response_model=APIResponse)
 async def get_post(
     post_id: str,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    include_follow_status: bool = Query(False, description="Include follow status for post author"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
 ):
     """Get a specific post by ID"""
     user_id = current_user["id"] if current_user else None
-    logger.info(f"Fetching post | Post ID: {post_id} | User: {user_id or 'anonymous'}")
+    logger.info(f"Fetching post | Post ID: {post_id} | Include Follow Status: {include_follow_status} | User: {user_id or 'anonymous'}")
     
-    post = await post_service.get_post_by_id(post_id, user_id)
+    post = await post_service.get_post_by_id(post_id, user_id, include_follow_status)
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -618,7 +630,7 @@ async def get_post(
     return APIResponse(
         success=True,
         message="Post retrieved successfully",
-        data={"post": post}
+        data=post
     )
 
 @router.put("/{post_id}", response_model=APIResponse)
@@ -707,7 +719,9 @@ async def vote_on_post(
         )
     
     # Vote on post
-    result = await post_service.vote_on_post(post_id, current_user['id'], vote_type)
+    # Convert 'up'/'down' to 'upvote'/'downvote' for the service
+    vote_type_full = 'upvote' if vote_type == 'up' else 'downvote'
+    result = await post_service.vote_on_post(post_id, vote_type_full, current_user['id'])
     
     logger.info(f"Vote recorded successfully | Post ID: {post_id} | Vote: {vote_type}")
     
@@ -797,4 +811,44 @@ async def update_post_assignee(
         message=f"Post assignee {action} successfully",
         data={"post": updated_post}
     )
+
+
+@router.get("/{post_id}/comments", response_model=APIResponse)
+async def get_comments_for_post(
+    post_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+):
+    """Get all comments for a post"""
+    try:
+        from uuid import UUID
+        post_uuid = UUID(post_id)
+        
+        # Handle user_id conversion - it might already be a UUID object or a string
+        user_id = None
+        if current_user:
+            if isinstance(current_user['id'], str):
+                user_id = UUID(current_user['id'])
+            else:
+                user_id = current_user['id']  # Already a UUID object
+        
+        logger.info(f"Fetching comments for post | Post ID: {post_id} | User: {user_id or 'anonymous'}")
+        
+        comments = await comment_service.get_comments_by_post(post_uuid, user_id)
+        
+        logger.info(f"Found {len(comments)} comments for post {post_id}")
+        
+        return APIResponse(
+            success=True,
+            message=f"Retrieved {len(comments)} comments",
+            data={
+                "comments": comments,
+                "total": len(comments)
+            }
+        )
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid post ID format")
+    except Exception as e:
+        logger.error(f"Error retrieving comments for post {post_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve comments")
     

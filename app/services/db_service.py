@@ -858,6 +858,111 @@ class DatabaseService:
             
             return comments
     
+    async def get_comment_by_id(self, comment_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get a comment by ID with author info"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT c.id, c.post_id, c.user_id, c.content, c.parent_id, c.edited, c.edited_at,
+                       c.upvotes, c.downvotes, c.reply_count, c.thread_level, c.thread_path,
+                       c.created_at, c.updated_at,
+                       u.username as author_username, u.display_name as author_display_name, 
+                       u.avatar_url as author_avatar_url
+                FROM comments c
+                JOIN users u ON c.user_id = u.id
+                WHERE c.id = $1
+            """
+            row = await conn.fetchrow(query, comment_id)
+            if not row:
+                return None
+            
+            comment = dict(row)
+            # Format author info
+            comment['author'] = {
+                'id': comment['user_id'],
+                'username': comment.pop('author_username'),
+                'display_name': comment.pop('author_display_name'),
+                'avatar_url': comment.pop('author_avatar_url'),
+                'rep_accounts': []  # TODO: Add rep_accounts if needed
+            }
+            return comment
+    
+    async def update_comment(self, comment_id: UUID, comment_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a comment"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                UPDATE comments 
+                SET content = $2, edited = TRUE, edited_at = NOW(), updated_at = NOW()
+                WHERE id = $1
+                RETURNING id, post_id, user_id, content, parent_id, edited, edited_at,
+                         upvotes, downvotes, reply_count, thread_level, thread_path,
+                         created_at, updated_at
+            """
+            row = await conn.fetchrow(query, comment_id, comment_data.get('content'))
+            return dict(row) if row else None
+    
+    async def delete_comment(self, comment_id: UUID) -> bool:
+        """Delete a comment"""
+        async with db_manager.get_connection() as conn:
+            query = "DELETE FROM comments WHERE id = $1"
+            result = await conn.execute(query, comment_id)
+            return result == "DELETE 1"
+    
+    async def create_or_update_comment_vote(self, comment_id: UUID, user_id: UUID, vote_type: str) -> Optional[Dict[str, Any]]:
+        """Create or update a vote on a comment"""
+        async with db_manager.get_connection() as conn:
+            # Check if vote already exists
+            existing_query = "SELECT id, vote_type FROM votes WHERE comment_id = $1 AND user_id = $2"
+            existing_vote = await conn.fetchrow(existing_query, comment_id, user_id)
+            
+            if existing_vote:
+                if existing_vote['vote_type'] == vote_type:
+                    # Same vote - remove it (toggle off)
+                    delete_query = "DELETE FROM votes WHERE id = $1"
+                    await conn.execute(delete_query, existing_vote['id'])
+                    return None
+                else:
+                    # Different vote - update it
+                    update_query = """
+                        UPDATE votes SET vote_type = $1, updated_at = NOW()
+                        WHERE id = $2
+                        RETURNING id, comment_id, user_id, vote_type, created_at, updated_at
+                    """
+                    row = await conn.fetchrow(update_query, vote_type, existing_vote['id'])
+                    return dict(row)
+            else:
+                # New vote
+                vote_id = uuid4()
+                insert_query = """
+                    INSERT INTO votes (id, comment_id, user_id, vote_type)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id, comment_id, user_id, vote_type, created_at, updated_at
+                """
+                row = await conn.fetchrow(insert_query, vote_id, comment_id, user_id, vote_type)
+                return dict(row)
+    
+    async def get_comment_vote_counts(self, comment_id: UUID) -> Dict[str, int]:
+        """Get vote counts for a comment"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT 
+                    COUNT(CASE WHEN vote_type = 'upvote' THEN 1 END) as upvotes,
+                    COUNT(CASE WHEN vote_type = 'downvote' THEN 1 END) as downvotes
+                FROM votes
+                WHERE comment_id = $1
+            """
+            row = await conn.fetchrow(query, comment_id)
+            return {
+                'upvotes': row['upvotes'] or 0,
+                'downvotes': row['downvotes'] or 0
+            }
+    
+    async def get_user_vote_on_comment(self, comment_id: UUID, user_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get a user's vote on a comment"""
+        async with db_manager.get_connection() as conn:
+            query = "SELECT id, vote_type, created_at FROM votes WHERE comment_id = $1 AND user_id = $2"
+            row = await conn.fetchrow(query, comment_id, user_id)
+            return dict(row) if row else None
+
     # Saved posts operations
     async def save_post(self, post_id: UUID, user_id: UUID) -> Dict[str, Any]:
         """Save a post for a user"""
