@@ -25,7 +25,8 @@ class MixedContentService:
         post_type: Optional[str] = None,
         assignee: Optional[List[str]] = None,
         sort_by: str = "timestamp",
-        order: str = "desc"
+        order: str = "desc",
+        include_follow_status: bool = False
     ) -> PaginatedResponse:
         """
         Get mixed content (posts + news) with configurable ratios
@@ -38,6 +39,7 @@ class MixedContentService:
             assignee: Filter by assignee representative IDs (list of UUIDs)
             sort_by: Sort field
             order: Sort order
+            include_follow_status: Include follow status for post authors
             
         Returns:
             PaginatedResponse with mixed content
@@ -69,7 +71,8 @@ class MixedContentService:
                     limit=max_posts,
                     post_type=post_type,
                     assignee=assignee,
-                    current_user_id=user_id
+                    current_user_id=user_id,
+                    include_follow_status=include_follow_status
                 )
                 logger.info(f"Fetched {len(posts)} posts from database")
             except Exception as e:

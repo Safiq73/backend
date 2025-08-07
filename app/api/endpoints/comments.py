@@ -30,7 +30,10 @@ async def create_comment(
 ):
     """Create a new comment"""
     try:
-        user_id = UUID(current_user['user_id'])
+        # Handle case where user_id might already be a UUID object
+        user_id = current_user['id']
+        if isinstance(user_id, str):
+            user_id = UUID(user_id)
         
         comment_dict = {
             'content': comment_data.content,
@@ -54,7 +57,11 @@ async def get_comment(
     """Get a specific comment by ID"""
     try:
         comment_uuid = UUID(comment_id)
-        user_id = UUID(current_user['user_id']) if current_user else None
+        user_id = None
+        if current_user:
+            user_id = current_user['id']
+            if isinstance(user_id, str):
+                user_id = UUID(user_id)
         
         comment = await comment_service.get_comment_by_id(comment_uuid, user_id)
         return comment
@@ -73,7 +80,9 @@ async def update_comment(
     """Update a comment (only by the author)"""
     try:
         comment_uuid = UUID(comment_id)
-        user_id = UUID(current_user['user_id'])
+        user_id = current_user['id']
+        if isinstance(user_id, str):
+            user_id = UUID(user_id)
         
         comment_dict = {'content': comment_data.content}
         comment = await comment_service.update_comment(comment_uuid, comment_dict, user_id)
@@ -92,7 +101,9 @@ async def delete_comment(
     """Delete a comment (only by the author)"""
     try:
         comment_uuid = UUID(comment_id)
-        user_id = UUID(current_user['user_id'])
+        user_id = current_user['id']
+        if isinstance(user_id, str):
+            user_id = UUID(user_id)
         
         success = await comment_service.delete_comment(comment_uuid, user_id)
         return CommentResponse(
@@ -114,7 +125,9 @@ async def vote_on_comment(
     """Vote on a comment (upvote/downvote)"""
     try:
         comment_uuid = UUID(comment_id)
-        user_id = UUID(current_user['user_id'])
+        user_id = current_user['id']
+        if isinstance(user_id, str):
+            user_id = UUID(user_id)
         
         # Convert 'up'/'down' to 'upvote'/'downvote' like posts
         if vote_type == 'up':

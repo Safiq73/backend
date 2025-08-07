@@ -25,7 +25,7 @@ class PostService:
         full_post = await self.db_service.get_post_by_id(post['id'])
         
         # Format response with engagement data
-        response = await self._format_post_response(full_post, author_id)
+        response = await self._format_post_response(full_post, author_id, False)
         
         logger.info(f"Created post {post['id']} by user {author_id}")
         return response
@@ -39,7 +39,8 @@ class PostService:
         location: Optional[str] = None,
         author_id: Optional[UUID] = None,
         assignee: Optional[List[str]] = None,
-        current_user_id: Optional[UUID] = None
+        current_user_id: Optional[UUID] = None,
+        include_follow_status: bool = False
     ) -> List[Dict[str, Any]]:
         """Get posts with filters and pagination"""
         # Get posts from database
@@ -55,21 +56,21 @@ class PostService:
         # Convert to response format
         responses = []
         for post in posts:
-            response = await self._format_post_response(post, current_user_id)
+            response = await self._format_post_response(post, current_user_id, include_follow_status)
             responses.append(response)
         
         logger.info(f"Retrieved {len(responses)} posts with filters: type={post_type}, location={location}, assignee={assignee}")
         return responses
             
     
-    async def get_post_by_id(self, post_id: UUID, current_user_id: Optional[UUID] = None) -> Dict[str, Any]:
+    async def get_post_by_id(self, post_id: UUID, current_user_id: Optional[UUID] = None, include_follow_status: bool = False) -> Dict[str, Any]:
         """Get a specific post by ID"""
         try:
             post = await self.db_service.get_post_by_id(post_id)
             if not post:
                 raise HTTPException(status_code=404, detail="Post not found")
             
-            response = await self._format_post_response(post, current_user_id)
+            response = await self._format_post_response(post, current_user_id, include_follow_status)
             
             logger.info(f"Retrieved post {post_id}")
             return response
@@ -100,7 +101,7 @@ class PostService:
             if not updated_post:
                 raise HTTPException(status_code=404, detail="Post not found")
             
-            response = await self._format_post_response(updated_post, current_user_id)
+            response = await self._format_post_response(updated_post, current_user_id, False)
             
             logger.info(f"Updated post {post_id} by user {current_user_id or 'system'}")
             return response
@@ -131,7 +132,7 @@ class PostService:
         if not updated_post:
             raise HTTPException(status_code=404, detail="Post not found")
         
-        response = await self._format_post_response(updated_post, current_user_id)
+        response = await self._format_post_response(updated_post, current_user_id, False)
         
         logger.info(f"Updated post {post_id} status to {status} by user {current_user_id}")
         return response
@@ -164,7 +165,7 @@ class PostService:
         if not updated_post:
             raise HTTPException(status_code=404, detail="Post not found")
         
-        response = await self._format_post_response(updated_post, current_user_id)
+        response = await self._format_post_response(updated_post, current_user_id, False)
         
         action = "assigned" if assignee_id else "unassigned"
         logger.info(f"Updated post {post_id} assignee ({action}) by user {current_user_id}")
@@ -261,8 +262,8 @@ class PostService:
             
             # Get user's current vote status
             user_vote = await self.db_service.get_user_vote_on_post(post_id, user_id)
-            is_upvoted = user_vote and user_vote['vote_type'] == 'upvote'
-            is_downvoted = user_vote and user_vote['vote_type'] == 'downvote'
+            is_upvoted = bool(user_vote and user_vote['vote_type'] == 'upvote')
+            is_downvoted = bool(user_vote and user_vote['vote_type'] == 'downvote')
             
             result = {
                 "upvotes": vote_counts["upvotes"],
@@ -334,7 +335,7 @@ class PostService:
             
             responses = []
             for post in posts:
-                response = await self._format_post_response(post, current_user_id)
+                response = await self._format_post_response(post, current_user_id, False)
                 responses.append(response)
             
             logger.info(f"Retrieved {len(responses)} trending posts")
@@ -344,7 +345,7 @@ class PostService:
             logger.error(f"Error retrieving trending posts: {e}")
             raise HTTPException(status_code=500, detail="Failed to retrieve trending posts")
     
-    async def _format_post_response(self, post: Dict[str, Any], current_user_id: Optional[UUID] = None) -> Dict[str, Any]:
+    async def _format_post_response(self, post: Dict[str, Any], current_user_id: Optional[UUID] = None, include_follow_status: bool = False) -> Dict[str, Any]:
         """Convert database post to API response format"""
         # Handle UUID - post['id'] is already a UUID object from asyncpg
         post_id = post['id'] if isinstance(post['id'], UUID) else UUID(post['id'])
@@ -387,7 +388,31 @@ class PostService:
                 # Don't fail the whole request if assignee details can't be fetched
                 assignee_info = None
         
-        return {
+        # Get follow status if requested and user is authenticated
+        follow_status = None
+        if include_follow_status and current_user_id:
+            try:
+                from app.services.follow_service import FollowService
+                follow_service = FollowService()
+                
+                # Get the author ID from the post
+                author_id = post['author']['id']
+                if isinstance(author_id, str):
+                    author_id = UUID(author_id)
+                
+                # Only check follow status if current user is not the author
+                if author_id != current_user_id:
+                    follow_data = await follow_service.check_follow_status(current_user_id, author_id)
+                    follow_status = follow_data.get('is_following', False)
+                else:
+                    # User is viewing their own post
+                    follow_status = None
+            except Exception as e:
+                logger.error(f"Error fetching follow status for post {post_id}: {e}")
+                # Don't fail the whole request if follow status can't be fetched
+                follow_status = None
+        
+        response = {
             "id": post['id'],
             "title": post['title'],
             "content": post['content'],
@@ -398,7 +423,10 @@ class PostService:
             "media_urls": post.get('media_urls', []),  # Map media_urls to images for API response
             "latitude": post.get('latitude'),
             "longitude": post.get('longitude'),
-            "author": post['author'],
+            "author": {
+                **post['author'],  # Include all existing author fields
+                "follow_status": follow_status if include_follow_status else None  # Add follow status to author
+            },
             "created_at": post['created_at'],
             "updated_at": post['updated_at'],
             "upvotes": vote_counts["upvotes"],
@@ -408,4 +436,6 @@ class PostService:
             "is_downvoted": is_downvoted,
             "is_saved": is_saved
         }
+            
+        return response
         

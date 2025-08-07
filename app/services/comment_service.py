@@ -192,8 +192,8 @@ class CommentService:
         if current_user_id:
             user_vote = await self.db_service.get_user_vote_on_comment(comment_id, current_user_id)
             comment['user_vote'] = user_vote['vote_type'] if user_vote else None
-            comment['is_upvoted'] = user_vote and user_vote['vote_type'] == 'upvote'
-            comment['is_downvoted'] = user_vote and user_vote['vote_type'] == 'downvote'
+            comment['is_upvoted'] = bool(user_vote and user_vote['vote_type'] == 'upvote')
+            comment['is_downvoted'] = bool(user_vote and user_vote['vote_type'] == 'downvote')
         else:
             comment['user_vote'] = None
             comment['is_upvoted'] = False
