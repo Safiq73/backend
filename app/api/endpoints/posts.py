@@ -24,7 +24,6 @@ async def get_posts(
     assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
-    include_follow_status: bool = Query(True, description="Include follow status for post authors"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
 ):
     """Get mixed content (posts + news) with filters and pagination"""
@@ -46,8 +45,7 @@ async def get_posts(
             post_type=post_type,
             assignee=assignee,
             sort_by=sort_by,
-            order=order,
-            include_follow_status=include_follow_status
+            order=order
         )
         
         logger.info(f"Successfully fetched {len(paginated_result.items)} mixed items for user {user_id or 'anonymous'}")
@@ -83,7 +81,6 @@ async def get_posts_only(
     assignee: Optional[List[str]] = Query(None, description="Filter by assignee representative IDs (can specify multiple)"),
     sort_by: str = Query("timestamp"),
     order: str = Query("desc"),
-    include_follow_status: bool = Query(True, description="Include follow status for post authors"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Get only user-generated posts (no news) with filters and pagination"""
@@ -102,8 +99,7 @@ async def get_posts_only(
             limit=size,
             post_type=post_type,
             assignee=assignee,
-            current_user_id=user_id,
-            include_follow_status=include_follow_status
+            current_user_id=user_id
         )
         
         # Add source field to posts
@@ -604,14 +600,13 @@ async def delete_post_media(
 @router.get("/{post_id}", response_model=APIResponse)
 async def get_post(
     post_id: str,
-    include_follow_status: bool = Query(True, description="Include follow status for post author"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Get a specific post by ID"""
     user_id = current_user["id"] if current_user else None
     logger.info(f"Fetching post | Post ID: {post_id} | User: {user_id or 'anonymous'}")
     
-    post = await post_service.get_post_by_id(post_id, user_id, include_follow_status)
+    post = await post_service.get_post_by_id(post_id, user_id)
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -713,6 +708,28 @@ async def vote_on_post(
     
     # Vote on post
     result = await post_service.vote_on_post(post_id, current_user['id'], vote_type)
+    
+    # Send real-time notification to post author (if it's a new vote)
+    if result.get('is_new_vote', False):
+        try:
+            from app.services.notification_service import notification_service
+            from uuid import UUID
+            
+            # Get user info for notification
+            voter_name = current_user.get('display_name') or current_user.get('username', 'Someone')
+            
+            # Don't notify if user voted on their own post
+            if post.get('user_id') != current_user['id']:
+                await notification_service.notify_vote(
+                    post_id=UUID(post_id),
+                    post_title=post.get('title', 'Unknown Post'),
+                    post_author_id=UUID(post.get('user_id')),
+                    voter_name=voter_name,
+                    vote_type=vote_type + 'vote'  # 'upvote' or 'downvote'
+                )
+        except Exception as e:
+            logger.error(f"Failed to send vote notification: {e}")
+            # Don't fail the vote if notification fails
     
     logger.info(f"Vote recorded successfully | Post ID: {post_id} | Vote: {vote_type}")
     

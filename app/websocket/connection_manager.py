@@ -157,6 +157,11 @@ class ConnectionManager:
             "timestamp": datetime.utcnow().isoformat()
         })
         
+        # Deliver pending notifications if user is authenticated
+        if user_id:
+            from app.services.notification_service import notification_service
+            await notification_service.deliver_pending_notifications(user_id, connection_id)
+        
         # Start background tasks if not running
         if not self._cleanup_task:
             self._cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())

@@ -46,9 +46,6 @@ CREATE TABLE users (
     is_verified BOOLEAN DEFAULT FALSE,
     followers_count INTEGER DEFAULT 0,
     following_count INTEGER DEFAULT 0,
-    -- Base location fields
-    base_latitude DECIMAL(10, 8),
-    base_longitude DECIMAL(11, 8),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     -- Full-text search vector (will be updated via triggers)
@@ -71,29 +68,6 @@ CREATE INDEX idx_users_bio_trgm ON users USING GIN (bio gin_trgm_ops);
 CREATE INDEX idx_users_followers_count ON users (followers_count DESC);
 CREATE INDEX idx_users_verified ON users (is_verified, followers_count DESC);
 CREATE INDEX idx_users_active_verified ON users (is_active, is_verified, followers_count DESC);
-
--- Base location constraints and indexes for users
-ALTER TABLE users 
-ADD CONSTRAINT check_base_latitude_india_bounds 
-    CHECK (base_latitude IS NULL OR (base_latitude >= 6.5 AND base_latitude <= 37.5));
-
-ALTER TABLE users 
-ADD CONSTRAINT check_base_longitude_india_bounds 
-    CHECK (base_longitude IS NULL OR (base_longitude >= 68.0 AND base_longitude <= 97.5));
-
--- Base location indexes for users
-CREATE INDEX idx_users_base_coordinates ON users (base_latitude, base_longitude) 
-WHERE base_latitude IS NOT NULL AND base_longitude IS NOT NULL;
-
-CREATE INDEX idx_users_base_latitude ON users (base_latitude) 
-WHERE base_latitude IS NOT NULL;
-
-CREATE INDEX idx_users_base_longitude ON users (base_longitude) 
-WHERE base_longitude IS NOT NULL;
-
--- Base location column comments
-COMMENT ON COLUMN users.base_latitude IS 'User''s base/home location latitude (India bounds: 6.5° to 37.5° N)';
-COMMENT ON COLUMN users.base_longitude IS 'User''s base/home location longitude (India bounds: 68° to 97.5° E)';
 
 -- Posts table - aligned with implementation
 CREATE TABLE posts (
@@ -233,6 +207,22 @@ CREATE INDEX idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX idx_notifications_read ON notifications (user_id, read, created_at DESC);
 CREATE INDEX idx_notifications_type ON notifications (notification_type);
 CREATE INDEX idx_notifications_created_at ON notifications (created_at DESC);
+
+-- Push subscriptions table for web push notifications
+CREATE TABLE push_subscriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    p256dh_key TEXT NOT NULL,
+    auth_key TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, endpoint)
+);
+
+CREATE INDEX idx_push_subscriptions_user_id ON push_subscriptions (user_id);
+CREATE INDEX idx_push_subscriptions_active ON push_subscriptions (user_id, is_active);
 
 -- Saved posts
 CREATE TABLE saved_posts (
