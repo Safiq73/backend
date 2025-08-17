@@ -262,6 +262,23 @@ class NotificationResponse(BaseModelWithTimestamps):
     class Config:
         from_attributes = True
 
+# Push notification models
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+class PushSubscriptionCreate(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+class PushSubscriptionResponse(BaseModelWithTimestamps):
+    id: UUID
+    endpoint: str
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
 # API Response models for pagination
 class PaginatedResponse(BaseModel):
     items: List[Any]
@@ -416,10 +433,6 @@ class PublicUserResponse(BaseModel):
     following_count: int = 0
     created_at: datetime
     updated_at: datetime
-    # Follow status fields (when viewing other users' profiles)
-    is_following: Optional[bool] = None
-    is_followed_by: Optional[bool] = None
-    follow_mutual: Optional[bool] = None
 
     class Config:
         from_attributes = True
