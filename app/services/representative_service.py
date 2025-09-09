@@ -163,6 +163,7 @@ class RepresentativeService:
             SELECT 
                 r.id as rep_id,
                 r.user_id,
+                r.evote_count,
                 r.created_at as rep_created_at,
                 r.updated_at as rep_updated_at,
                 -- Title information
@@ -199,6 +200,7 @@ class RepresentativeService:
         return {
             "id": row["rep_id"],
             "user_id": row["user_id"],
+            "evote_count": row["evote_count"] or 0,
             "created_at": row["rep_created_at"],
             "updated_at": row["rep_updated_at"],
             "title_info": {

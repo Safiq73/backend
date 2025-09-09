@@ -863,6 +863,349 @@ class DatabaseService:
                 comments.append(comment)
             
             return comments
+
+    async def get_comment_by_id(self, comment_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get a specific comment by ID with author info"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT c.id, c.post_id, c.content, c.parent_id, c.created_at, c.updated_at,
+                       c.edited, c.edited_at, c.thread_level, c.thread_path,
+                       u.id as user_id, u.username as author_username, 
+                       u.display_name as author_display_name, u.avatar_url as author_avatar_url
+                FROM comments c
+                JOIN users u ON c.user_id = u.id
+                WHERE c.id = $1
+            """
+            row = await conn.fetchrow(query, comment_id)
+            
+            if not row:
+                return None
+            
+            comment = dict(row)
+            author_user_id = comment.pop('user_id')
+            
+            # Get rep_accounts for the author
+            rep_query = """
+                SELECT r.id, r.user_id, r.created_at as linked_at,
+                       t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                       j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                FROM representatives r
+                JOIN titles t ON r.title_id = t.id
+                JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                WHERE r.user_id = $1
+                ORDER BY t.level_rank DESC
+            """
+            rep_rows = await conn.fetch(rep_query, author_user_id)
+            
+            rep_accounts = []
+            for rep_row in rep_rows:
+                rep_data = dict(rep_row)
+                formatted_rep = {
+                    'id': rep_data['id'],
+                    'title': {
+                        'id': rep_data['title_id'],
+                        'title_name': rep_data['title_name'],
+                        'abbreviation': rep_data['abbreviation'],
+                        'level_rank': rep_data['level_rank'],
+                        'description': rep_data['description']
+                    },
+                    'jurisdiction': {
+                        'id': rep_data['jurisdiction_id'],
+                        'name': rep_data['jurisdiction_name'],
+                        'level_name': rep_data['jurisdiction_level']
+                    },
+                    'linked_at': rep_data['linked_at']
+                }
+                rep_accounts.append(formatted_rep)
+            
+            comment['author'] = {
+                'id': author_user_id,
+                'username': comment.pop('author_username'),
+                'display_name': comment.pop('author_display_name'),
+                'avatar_url': comment.pop('author_avatar_url'),
+                'rep_accounts': rep_accounts
+            }
+            
+            return comment
+
+    async def get_comments_by_post_paginated(
+        self, 
+        post_id: UUID, 
+        limit: int = 20, 
+        offset: int = 0,
+        sort_by: str = "created_at",
+        order: str = "desc"
+    ) -> List[Dict[str, Any]]:
+        """Get paginated comments for a post with sorting"""
+        async with db_manager.get_connection() as conn:
+            # Validate sort field
+            allowed_sorts = {"created_at", "upvotes", "reply_count"}
+            if sort_by not in allowed_sorts:
+                sort_by = "created_at"
+            
+            order_clause = "DESC" if order.lower() == "desc" else "ASC"
+            
+            query = f"""
+                SELECT c.id, c.post_id, c.content, c.parent_id, c.created_at, c.updated_at,
+                       c.edited, c.edited_at, c.thread_level, c.thread_path,
+                       u.id as user_id, u.username as author_username, 
+                       u.display_name as author_display_name, u.avatar_url as author_avatar_url
+                FROM comments c
+                JOIN users u ON c.user_id = u.id
+                WHERE c.post_id = $1
+                ORDER BY c.{sort_by} {order_clause}
+                LIMIT $2 OFFSET $3
+            """
+            rows = await conn.fetch(query, post_id, limit, offset)
+            
+            if not rows:
+                return []
+            
+            # Get unique user IDs to fetch rep_accounts
+            user_ids = list(set([row['user_id'] for row in rows]))
+            
+            # Fetch all rep_accounts data for these users
+            user_rep_accounts = {}
+            if user_ids:
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.user_id = ANY($1)
+                    ORDER BY r.user_id, t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_ids)
+                
+                # Group rep accounts by user_id
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    user_id_key = rep_data['user_id']
+                    
+                    if user_id_key not in user_rep_accounts:
+                        user_rep_accounts[user_id_key] = []
+                    
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    user_rep_accounts[user_id_key].append(formatted_rep)
+            
+            comments = []
+            for row in rows:
+                comment = dict(row)
+                author_user_id = comment.pop('user_id')
+                comment['author'] = {
+                    'id': author_user_id,
+                    'username': comment.pop('author_username'),
+                    'display_name': comment.pop('author_display_name'),
+                    'avatar_url': comment.pop('author_avatar_url'),
+                    'rep_accounts': user_rep_accounts.get(author_user_id, [])
+                }
+                comments.append(comment)
+            
+            return comments
+
+    async def get_comments_count_by_post(self, post_id: UUID) -> int:
+        """Get total count of comments for a post"""
+        async with db_manager.get_connection() as conn:
+            query = "SELECT COUNT(*) as count FROM comments WHERE post_id = $1"
+            row = await conn.fetchrow(query, post_id)
+            return row['count'] if row else 0
+
+    async def update_comment(self, comment_id: UUID, update_data: Dict[str, Any], user_id: UUID) -> Optional[Dict[str, Any]]:
+        """Update a comment (only by the comment author)"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                UPDATE comments 
+                SET content = $2, edited = TRUE, edited_at = NOW(), updated_at = NOW()
+                WHERE id = $1 AND user_id = $3
+                RETURNING id, post_id, user_id, content, parent_id, edited, edited_at, created_at, updated_at
+            """
+            row = await conn.fetchrow(query, comment_id, update_data.get('content'), user_id)
+            return dict(row) if row else None
+
+    async def delete_comment(self, comment_id: UUID, user_id: UUID) -> bool:
+        """Delete a comment (only by the comment author)"""
+        async with db_manager.get_connection() as conn:
+            query = "DELETE FROM comments WHERE id = $1 AND user_id = $2"
+            result = await conn.execute(query, comment_id, user_id)
+            return result == "DELETE 1"
+
+    async def get_comment_replies(self, parent_id: UUID, limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
+        """Get replies to a specific comment"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT c.id, c.post_id, c.content, c.parent_id, c.created_at, c.updated_at,
+                       c.edited, c.edited_at, c.thread_level, c.thread_path,
+                       u.id as user_id, u.username as author_username, 
+                       u.display_name as author_display_name, u.avatar_url as author_avatar_url
+                FROM comments c
+                JOIN users u ON c.user_id = u.id
+                WHERE c.parent_id = $1
+                ORDER BY c.created_at ASC
+                LIMIT $2 OFFSET $3
+            """
+            rows = await conn.fetch(query, parent_id, limit, offset)
+            
+            if not rows:
+                return []
+            
+            # Get unique user IDs to fetch rep_accounts
+            user_ids = list(set([row['user_id'] for row in rows]))
+            
+            # Fetch all rep_accounts data for these users
+            user_rep_accounts = {}
+            if user_ids:
+                rep_query = """
+                    SELECT r.id, r.user_id, r.created_at as linked_at,
+                           t.id as title_id, t.title_name, t.abbreviation, t.level_rank, t.description,
+                           j.id as jurisdiction_id, j.name as jurisdiction_name, j.level_name as jurisdiction_level
+                    FROM representatives r
+                    JOIN titles t ON r.title_id = t.id
+                    JOIN jurisdictions j ON r.jurisdiction_id = j.id
+                    WHERE r.user_id = ANY($1)
+                    ORDER BY r.user_id, t.level_rank DESC
+                """
+                rep_rows = await conn.fetch(rep_query, user_ids)
+                
+                # Group rep accounts by user_id
+                for rep_row in rep_rows:
+                    rep_data = dict(rep_row)
+                    user_id_key = rep_data['user_id']
+                    
+                    if user_id_key not in user_rep_accounts:
+                        user_rep_accounts[user_id_key] = []
+                    
+                    formatted_rep = {
+                        'id': rep_data['id'],
+                        'title': {
+                            'id': rep_data['title_id'],
+                            'title_name': rep_data['title_name'],
+                            'abbreviation': rep_data['abbreviation'],
+                            'level_rank': rep_data['level_rank'],
+                            'description': rep_data['description']
+                        },
+                        'jurisdiction': {
+                            'id': rep_data['jurisdiction_id'],
+                            'name': rep_data['jurisdiction_name'],
+                            'level_name': rep_data['jurisdiction_level']
+                        },
+                        'linked_at': rep_data['linked_at']
+                    }
+                    user_rep_accounts[user_id_key].append(formatted_rep)
+            
+            replies = []
+            for row in rows:
+                reply = dict(row)
+                author_user_id = reply.pop('user_id')
+                reply['author'] = {
+                    'id': author_user_id,
+                    'username': reply.pop('author_username'),
+                    'display_name': reply.pop('author_display_name'),
+                    'avatar_url': reply.pop('author_avatar_url'),
+                    'rep_accounts': user_rep_accounts.get(author_user_id, [])
+                }
+                replies.append(reply)
+            
+            return replies
+
+    async def get_comment_replies_count(self, comment_id: UUID) -> int:
+        """Get count of replies to a comment"""
+        async with db_manager.get_connection() as conn:
+            query = "SELECT COUNT(*) as count FROM comments WHERE parent_id = $1"
+            row = await conn.fetchrow(query, comment_id)
+            return row['count'] if row else 0
+
+    async def get_comment_vote_counts(self, comment_id: UUID) -> Dict[str, int]:
+        """Get vote counts for a comment"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT vote_type, COUNT(*) as count
+                FROM votes 
+                WHERE comment_id = $1 
+                GROUP BY vote_type
+            """
+            rows = await conn.fetch(query, comment_id)
+            
+            vote_counts = {"upvotes": 0, "downvotes": 0}
+            for row in rows:
+                if row['vote_type'] == 'upvote':
+                    vote_counts["upvotes"] = row['count']
+                elif row['vote_type'] == 'downvote':
+                    vote_counts["downvotes"] = row['count']
+            
+            return vote_counts
+
+    async def get_user_vote_on_comment(self, comment_id: UUID, user_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get user's vote on a specific comment"""
+        async with db_manager.get_connection() as conn:
+            query = """
+                SELECT id, vote_type, created_at
+                FROM votes 
+                WHERE comment_id = $1 AND user_id = $2
+            """
+            row = await conn.fetchrow(query, comment_id, user_id)
+            return dict(row) if row else None
+
+    async def create_or_update_comment_vote(self, comment_id: UUID, user_id: UUID, vote_type: str) -> Dict[str, Any]:
+        """Create or update a vote on a comment"""
+        async with db_manager.get_connection() as conn:
+            # Check if vote already exists
+            existing_query = "SELECT id, vote_type FROM votes WHERE comment_id = $1 AND user_id = $2"
+            existing = await conn.fetchrow(existing_query, comment_id, user_id)
+            
+            if existing:
+                if existing['vote_type'] == vote_type:
+                    # Same vote type, remove it (toggle off)
+                    delete_query = "DELETE FROM votes WHERE id = $1"
+                    await conn.execute(delete_query, existing['id'])
+                    return {"action": "removed", "vote_type": None}
+                else:
+                    # Different vote type, update it
+                    update_query = """
+                        UPDATE votes 
+                        SET vote_type = $1, updated_at = NOW()
+                        WHERE id = $2
+                        RETURNING id, vote_type, created_at, updated_at
+                    """
+                    row = await conn.fetchrow(update_query, vote_type, existing['id'])
+                    result = dict(row)
+                    result["action"] = "updated"
+                    return result
+            else:
+                # Create new vote
+                vote_id = uuid4()
+                insert_query = """
+                    INSERT INTO votes (id, user_id, comment_id, vote_type)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id, vote_type, created_at, updated_at
+                """
+                row = await conn.fetchrow(insert_query, vote_id, user_id, comment_id, vote_type)
+                result = dict(row)
+                result["action"] = "created"
+                return result
+
+    async def remove_comment_vote(self, comment_id: UUID, user_id: UUID) -> bool:
+        """Remove a user's vote from a comment"""
+        async with db_manager.get_connection() as conn:
+            query = "DELETE FROM votes WHERE comment_id = $1 AND user_id = $2"
+            result = await conn.execute(query, comment_id, user_id)
+            return result == "DELETE 1"
     
     # Saved posts operations
     async def save_post(self, post_id: UUID, user_id: UUID) -> Dict[str, Any]:

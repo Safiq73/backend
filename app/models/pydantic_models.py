@@ -2,8 +2,8 @@
 Pydantic models for CivicPulse API - Corrected and aligned with database schema
 """
 
-from pydantic import BaseModel, Field, EmailStr, validator
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, EmailStr, validator, model_validator
+from typing import Optional, List, Dict, Any, Union, TypeVar, Generic
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
@@ -208,7 +208,7 @@ class CommentBase(BaseModel):
     parent_id: Optional[UUID] = None
 
 class CommentCreate(CommentBase):
-    pass
+    post_id: UUID = Field(..., description="UUID of the post to comment on")
 
 class CommentUpdate(BaseModel):
     content: str = Field(..., min_length=1, max_length=2000)
@@ -279,9 +279,12 @@ class PushSubscriptionResponse(BaseModelWithTimestamps):
     class Config:
         from_attributes = True
 
+# Define type variable for generic responses
+T = TypeVar('T')
+
 # API Response models for pagination
-class PaginatedResponse(BaseModel):
-    items: List[Any]
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: List[T]
     total: int
     page: int
     size: int
@@ -391,6 +394,7 @@ class JurisdictionInfo(BaseModel):
 class RepresentativeWithDetails(BaseModel):
     id: UUID
     user_id: Optional[UUID] = None
+    evote_count: int = 0
     created_at: datetime
     updated_at: datetime
     title_info: TitleInfo
@@ -480,6 +484,106 @@ class FollowStatsResponse(BaseModel):
     followers_count: int
     following_count: int
     mutual_follows_count: int
+
+# eVote models
+class RepresentativeEVoteRequest(BaseModel):
+    """Request model for eVoting"""
+    pass  # No additional fields needed, rep_id comes from URL
+
+class RepresentativeEVoteResponse(BaseModel):
+    """Response model for eVote operations"""
+    success: bool = True
+    message: str
+    has_evoted: bool = False
+    total_evotes: int = 0
+
+class RepresentativeEVoteStatus(BaseModel):
+    """Model for checking user's eVote status"""
+    has_evoted: bool = False
+    evoted_at: Optional[datetime] = None
+
+class RepresentativeEVoteStats(BaseModel):
+    """Model for representative eVote statistics"""
+    representative_id: UUID
+    total_evotes: int = 0
+    evote_percentage: Optional[float] = None  # Percentage of total registered users
+    rank: Optional[int] = None  # Rank among all representatives
+
+class EVoteTrendData(BaseModel):
+    """Model for eVote trend data points"""
+    date: str  # ISO date format
+    total_evotes: int
+
+class RepresentativeEVoteTrends(BaseModel):
+    """Model for eVote trends response"""
+    representative_id: UUID
+    period_days: int
+    trends: List[EVoteTrendData]
+    current_total: int
+    period_change: int  # Change from start to end of period
+
+class UserEVoteHistory(BaseModel):
+    """Model for user's eVoting history"""
+    representative_id: UUID
+    representative_name: str
+    title_info: TitleInfo
+    jurisdiction_info: JurisdictionInfo
+    evoted_at: datetime
+    is_active: bool = True  # Whether the eVote is still active
+
+class UserEVoteHistoryResponse(BaseModel):
+    """Response model for user's eVoting history"""
+    evotes: List[UserEVoteHistory]
+    total_count: int
+    active_evotes_count: int
+
+class AccountStatsMetric(BaseModel):
+    """Model for individual account statistics metric"""
+    key: str
+    label: str
+    value: Union[int, float, str]
+    type: str  # "number", "string", "percentage", etc.
+
+class AccountStatsResponse(BaseModel):
+    """Model for structured account statistics response"""
+    account_type: str
+    account_ids: List[UUID]
+    metrics: List[AccountStatsMetric]
+    evotes: Optional[AccountStatsMetric] = None  # Single object, only for representatives
+
+class CitizenAccountStatsResponse(BaseModel):
+    """Model for citizen account statistics response (no evotes)"""
+    account_type: str
+    account_ids: List[UUID]
+    metrics: List[AccountStatsMetric]
+
+class RepresentativeAccountStatsResponse(BaseModel):
+    """Model for representative account statistics response"""
+    account_type: str
+    account_ids: List[UUID]
+    metrics: List[AccountStatsMetric]
+
+class AccountStatsRequest(BaseModel):
+    """Request model for fetching account statistics"""
+    account_ids: List[UUID]
+    representative_account: bool = Field(False, description="Whether these are representative accounts")
+
+    @validator('account_ids')
+    def must_have_at_least_one_id(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError("At least one account ID must be provided")
+        return v
+
+    @model_validator(mode='after')
+    def validate_account_ids_for_type(cls, values):
+        """Validate account_ids count based on account type"""
+        account_ids = values.account_ids
+        representative_account = values.representative_account
+        
+        if not representative_account and len(account_ids) > 1:
+            raise ValueError("For citizen account stats (representative_account is false), you must provide exactly one account ID.")
+        
+        return values
 
 # Enable forward references
 CommentResponse.model_rebuild()

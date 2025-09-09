@@ -721,9 +721,9 @@ async def vote_on_post(
             # Don't notify if user voted on their own post
             if post.get('user_id') != current_user['id']:
                 await notification_service.notify_vote(
-                    post_id=UUID(post_id),
+                    post_id=post_id,
                     post_title=post.get('title', 'Unknown Post'),
-                    post_author_id=UUID(post.get('user_id')),
+                    post_author_id=post.get('user_id'),
                     voter_name=voter_name,
                     vote_type=vote_type + 'vote'  # 'upvote' or 'downvote'
                 )
@@ -819,4 +819,61 @@ async def update_post_assignee(
         message=f"Post assignee {action} successfully",
         data={"post": updated_post}
     )
+
+
+@router.get("/{post_id}/comments", response_model=APIResponse)
+async def get_post_comments_compatibility(
+    post_id: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(20, ge=1, le=100, description="Comments per page"),
+    sort_by: str = Query("created_at", regex="^(created_at|upvotes|reply_count)$"),
+    order: str = Query("desc", regex="^(asc|desc)$"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+):
+    """
+    Get comments for a post - Compatibility endpoint for frontend
+    Redirects to the comments service for actual processing
+    """
+    try:
+        from app.services.comment_service import CommentService
+        
+        comment_service = CommentService()
+        user_id = current_user['id'] if current_user else None
+        
+        logger.info(f"Fetching comments for post: {post_id} | Page: {page} | Size: {size} (compatibility route)")
+        
+        comments_response = await comment_service.get_comments_by_post(
+            post_id=post_id,
+            current_user_id=user_id,
+            page=page,
+            size=size,
+            sort_by=sort_by,
+            order=order
+        )
+        
+        # Convert to old format for frontend compatibility
+        return APIResponse(
+            success=True,
+            message="Comments fetched successfully",
+            data={
+                "comments": comments_response.items,
+                "total": comments_response.total,
+                "page": comments_response.page,
+                "size": comments_response.size,
+                "has_more": comments_response.has_more
+            }
+        )
+        
+    except ValueError as e:
+        logger.warning(f"Invalid request parameters: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch comments: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch comments"
+        )
     

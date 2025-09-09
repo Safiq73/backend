@@ -35,7 +35,10 @@ from .pydantic_models import (
     PostFilter, PostSort,
     
     # Stats models
-    UserStats, PostStats
+    UserStats, PostStats,
+    
+    # Account stats models
+    AccountStatsMetric, CitizenAccountStatsResponse, RepresentativeAccountStatsResponse, AccountStatsRequest
 )
 
 __all__ = [
@@ -49,5 +52,6 @@ __all__ = [
     "Token", "TokenData", "LoginRequest",
     "APIResponse",
     "PostFilter", "PostSort",
-    "UserStats", "PostStats"
+    "UserStats", "PostStats",
+    "AccountStatsMetric", "CitizenAccountStatsResponse", "RepresentativeAccountStatsResponse", "AccountStatsRequest"
 ]

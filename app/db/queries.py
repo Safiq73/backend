@@ -541,3 +541,151 @@ class SessionQueries:
         WHERE expires_at < NOW() OR revoked = TRUE
         RETURNING COUNT(*);
     """
+
+
+class RepresentativeEVoteQueries:
+    """SQL queries for representative eVote management"""
+    
+    # Check if user has eVoted for representative
+    CHECK_USER_EVOTE = """
+        SELECT id, created_at 
+        FROM representative_evotes 
+        WHERE user_id = $1 AND representative_id = $2;
+    """
+    
+    # Add eVote for representative
+    ADD_EVOTE = """
+        INSERT INTO representative_evotes (user_id, representative_id)
+        VALUES ($1, $2)
+        RETURNING id, created_at;
+    """
+    
+    # Remove eVote for representative
+    REMOVE_EVOTE = """
+        DELETE FROM representative_evotes 
+        WHERE user_id = $1 AND representative_id = $2
+        RETURNING id;
+    """
+    
+    # Get total eVotes for representative
+    GET_TOTAL_EVOTES = """
+        SELECT COUNT(*) as total_evotes
+        FROM representative_evotes 
+        WHERE representative_id = $1;
+    """
+    
+    # Get representative eVote statistics
+    GET_EVOTE_STATS = """
+        SELECT 
+            r.id,
+            r.evote_count as total_evotes,
+            ROUND(
+                (r.evote_count * 100.0 / NULLIF((SELECT COUNT(*) FROM users WHERE is_active = TRUE), 0)), 
+                2
+            ) as evote_percentage,
+            (
+                SELECT COUNT(*) + 1 
+                FROM representatives r2 
+                WHERE r2.evote_count > r.evote_count
+            ) as rank
+        FROM representatives r
+        WHERE r.id = $1;
+    """
+    
+    # Get most recent daily count before a date
+    GET_LAST_DAILY_COUNT = """
+        SELECT total_evotes 
+        FROM representative_evote_daily_counts
+        WHERE representative_id = $1 AND date < $2
+        ORDER BY date DESC 
+        LIMIT 1;
+    """
+    
+    # Get today's daily count record
+    GET_TODAY_DAILY_COUNT = """
+        SELECT total_evotes 
+        FROM representative_evote_daily_counts
+        WHERE representative_id = $1 AND date = $2;
+    """
+    
+    # Insert new daily count record
+    INSERT_DAILY_COUNT = """
+        INSERT INTO representative_evote_daily_counts (representative_id, date, total_evotes)
+        VALUES ($1, $2, $3)
+        RETURNING id;
+    """
+    
+    # Update existing daily count record
+    UPDATE_DAILY_COUNT = """
+        UPDATE representative_evote_daily_counts 
+        SET total_evotes = $3
+        WHERE representative_id = $1 AND date = $2
+        RETURNING id;
+    """
+    
+    # Get eVote trends for line graphs
+    GET_EVOTE_TRENDS = """
+        SELECT date, total_evotes 
+        FROM representative_evote_daily_counts
+        WHERE representative_id = $1 AND date >= $2
+        ORDER BY date;
+    """
+    
+    # Get user's eVoting history
+    GET_USER_EVOTE_HISTORY = """
+        SELECT 
+            e.representative_id,
+            e.created_at as evoted_at,
+            r.id,
+            r.title_id,
+            r.jurisdiction_id,
+            -- Get title info
+            t.title_name,
+            t.abbreviation,
+            t.level_rank,
+            t.title_type,
+            t.description as title_description,
+            t.level,
+            t.is_elected,
+            t.term_length,
+            t.status as title_status,
+            t.created_at as title_created_at,
+            t.updated_at as title_updated_at,
+            -- Get jurisdiction info
+            j.name as jurisdiction_name,
+            j.level_name as jurisdiction_level_name,
+            j.level_rank as jurisdiction_level_rank,
+            j.parent_id as parent_jurisdiction_id,
+            j.created_at as jurisdiction_created_at,
+            j.updated_at as jurisdiction_updated_at
+        FROM representative_evotes e
+        JOIN representatives r ON e.representative_id = r.id
+        JOIN titles t ON r.title_id = t.id
+        JOIN jurisdictions j ON r.jurisdiction_id = j.id
+        WHERE e.user_id = $1
+        ORDER BY e.created_at DESC
+        LIMIT $2 OFFSET $3;
+    """
+    
+    # Get user's active eVotes count
+    GET_USER_EVOTES_COUNT = """
+        SELECT COUNT(*) as total_count
+        FROM representative_evotes 
+        WHERE user_id = $1;
+    """
+    
+    # Get top eVoted representatives
+    GET_TOP_EVOTED_REPRESENTATIVES = """
+        SELECT 
+            r.id,
+            r.evote_count,
+            r.title_id,
+            r.jurisdiction_id,
+            t.title_name,
+            j.name as jurisdiction_name
+        FROM representatives r
+        JOIN titles t ON r.title_id = t.id
+        JOIN jurisdictions j ON r.jurisdiction_id = j.id
+        ORDER BY r.evote_count DESC
+        LIMIT $1;
+    """
