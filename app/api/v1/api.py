@@ -1,5 +1,12 @@
 from fastapi import APIRouter
-from app.api.endpoints import auth, users, posts, comments, notifications, analytics, titles, representatives, follows, search, admin, upload, recommendations
+from app.api.endpoints import auth, users, posts, comments, notifications, analytics, titles, representatives, follows, search, admin, upload, recommendations, accounts
+
+# Import eVote endpoints
+try:
+    from app.api.endpoints import representative_evotes
+    EVOTE_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    EVOTE_ENDPOINTS_AVAILABLE = False
 
 # Import admin S3 endpoints (optional)
 try:
@@ -27,6 +34,7 @@ api_router = APIRouter()
 # Include all endpoint routers
 api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+api_router.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
 api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
 api_router.include_router(comments.router, prefix="/comments", tags=["comments"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
@@ -41,6 +49,10 @@ api_router.include_router(upload.router, prefix="/upload", tags=["upload"])
 
 # Include recommendations endpoints
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])
+
+# Include eVote endpoints if available
+if EVOTE_ENDPOINTS_AVAILABLE:
+    api_router.include_router(representative_evotes.router, tags=["evotes"])
 
 # Include admin S3 endpoints if available
 if ADMIN_S3_ENDPOINTS_AVAILABLE:

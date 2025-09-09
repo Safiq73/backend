@@ -874,3 +874,46 @@ CREATE TRIGGER trigger_user_permission_overrides_updated_at
     BEFORE UPDATE ON user_permission_overrides
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
+-- METRICS TABLES
+-- =============================================================================
+
+-- Representative metrics table
+CREATE TABLE representative_metrics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id UUID NOT NULL REFERENCES representatives(id) ON DELETE CASCADE,
+    total_resolved_issues NUMERIC(10,2) DEFAULT 0,
+    resolution_rate NUMERIC(5,2) DEFAULT 0,         -- percentage
+    average_response_time NUMERIC(10,2) DEFAULT 0,  -- in hours/days
+    efficiency_score NUMERIC(10,2) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User metrics table
+CREATE TABLE user_metrics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    posts_count INTEGER DEFAULT 0,
+    comments_received INTEGER DEFAULT 0,
+    upvotes_received INTEGER DEFAULT 0,
+    total_views INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for metrics tables
+CREATE INDEX idx_representative_metrics_account ON representative_metrics (account_id);
+CREATE INDEX idx_user_metrics_account ON user_metrics (account_id);
+
+-- Add updated_at triggers for metrics tables
+CREATE TRIGGER trigger_representative_metrics_updated_at
+    BEFORE UPDATE ON representative_metrics
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_user_metrics_updated_at
+    BEFORE UPDATE ON user_metrics
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();

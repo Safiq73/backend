@@ -133,38 +133,6 @@ async def get_user_by_id(
         data=PublicUserWithRepresentativeResponse(**user_data)
     )
 
-@router.get("/{user_id}/stats", response_model=APIResponse)
-async def get_user_stats(
-    user_id: UUID = Path(..., description="ID of the user to get stats for"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
-):
-    """Get consolidated user statistics"""
-    try:
-        # Get user's posts to calculate stats
-        posts = await post_service.get_posts_by_user(user_id)
-        
-        # Calculate consolidated statistics
-        posts_count = len(posts)
-        comments_received = sum(post["comment_count"] for post in posts)
-        upvotes_received = sum(post["upvotes"] for post in posts)
-        total_views = posts_count * 127  # Mock view count for now
-        
-        stats = {
-            "posts_count": posts_count,
-            "comments_received": comments_received,
-            "upvotes_received": upvotes_received,
-            "total_views": total_views
-        }
-        
-        return APIResponse(
-            success=True,
-            message="User statistics retrieved successfully",
-            data=stats
-        )
-    except Exception as e:
-        logger.error(f"Failed to get user stats for {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve user statistics")
-
 @router.put("/profile", response_model=APIResponse)
 async def update_user_profile(
     user_data: UserUpdate,
